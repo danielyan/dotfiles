@@ -1,0 +1,1 @@
+source ~/projects/auto_install/zshrc_lev
