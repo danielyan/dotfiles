@@ -2,6 +2,10 @@
 
 echo "Installing homebrew"
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)"
+echo >> /Users/$USER/.zprofile
+echo 'ecal "$(/opt/homebrew/bin/brew shellenv)"' >> /Users/$USER/.zprofile
+source /Users/$USER/.zprofile
+
 brew install yadm fish gpg
 
 yadm clone https://github.com/danielyan/dotfiles.git
