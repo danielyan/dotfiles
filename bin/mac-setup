@@ -6,6 +6,10 @@ echo >> /Users/$USER/.zprofile
 echo 'ecal "$(/opt/homebrew/bin/brew shellenv)"' >> /Users/$USER/.zprofile
 source /Users/$USER/.zprofile
 
-brew install yadm fish gpg
+brew install yadm fish
+
+# Install fish as default shell
+echo "/opt/homebrew/bin/fish" | sudo tee -a /etc/shells
+chsh -s /opt/homebrew/bin/fish
 
 yadm clone https://github.com/danielyan/dotfiles.git
