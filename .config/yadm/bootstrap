@@ -1,0 +1,60 @@
+export PATH="/opt/homebrew/bin/:$PATH"
+
+## Functions ###############################################
+confirm() {
+    local prompt="${1:-Are you sure? Type 'y' or 'yes' to continue: }"
+    read -p "$prompt" response
+    response=$(echo "$response" | tr '[:upper:]' '[:lower:]')
+
+    if [[ "$response" == "y" || "$response" == "yes" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+command_exists() {
+    command -v "$1" &> /dev/null
+}
+
+echo_ok() {
+    echo "[✓] $1"
+}
+
+echo_err() {
+    echo "[✗] $1"
+}
+
+echo_warn() {
+    echo "[➞] $1"
+}
+############################################################
+echo_ok "Bootstrap starting..."
+
+if command_exists softwareupdate; then
+    confirm "Install apple updates? " && {
+        echo_ok "Installing Apple updates..."
+        sudo softwareupdate -i -a
+        echo_ok "Updates installed successfully."
+    }
+else
+    echo_warn "softwareupdate is not installed, skipping Apple updates"
+fi
+
+echo_ok "Updating Homebrew..."
+brew update
+brew doctor
+brew upgrade
+
+echo_ok "Installing apps..."
+brew bundle
+
+## Configure 
+# Install fish as default shell
+echo_ok "Installing fish as default shell..."
+echo "/opt/homebrew/bin/fish" | sudo tee -a /etc/shells
+chsh -s /opt/homebrew/bin/fish
+
+## Install
+echo_ok "Bootstrap finished..."
+
