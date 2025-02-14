@@ -1,7 +1,7 @@
 export PATH="/opt/homebrew/bin/:$PATH"
 
 ## Functions ###############################################
-confirm() {
+ask() {
     local prompt="${1:-Are you sure? Type 'y' or 'yes' to continue: }"
     read -p "$prompt" response
     response=$(echo "$response" | tr '[:upper:]' '[:lower:]')
@@ -32,7 +32,7 @@ echo_warn() {
 echo_ok "Bootstrap starting..."
 
 if command_exists softwareupdate; then
-    confirm "Install apple updates? " && {
+    ask "Install apple updates? " && {
         echo_ok "Installing Apple updates..."
         sudo softwareupdate -i -a
         echo_ok "Updates installed successfully."
@@ -54,6 +54,11 @@ brew bundle
 echo_ok "Installing fish as default shell..."
 echo "/opt/homebrew/bin/fish" | sudo tee -a /etc/shells
 chsh -s /opt/homebrew/bin/fish
+
+ask "Set up macos defaults? " && {
+    echo_ok "Set up MacOs defaults..."
+    ./bin/mac-defaults
+}
 
 ## Install
 echo_ok "Bootstrap finished..."

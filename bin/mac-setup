@@ -4,7 +4,7 @@ export PATH="/opt/homebrew/bin/:$PATH"
 echo "Installing homebrew"
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)"
 
-#brew install yadm gpg
+brew install yadm gpg
 
-#yadm clone https://github.com/danielyan/dotfiles.git
+yadm clone https://github.com/danielyan/dotfiles.git
 yadm bootstrap
