@@ -20,6 +20,10 @@ done 2>/dev/null &
 # General UI/UX                                                               #
 ###############################################################################
 
+# Enable Dark Mode
+# Disable Click on Desktop thing
+
+
 # Disable the sound effects on boot
 sudo nvram SystemAudioVolume=" "
 
