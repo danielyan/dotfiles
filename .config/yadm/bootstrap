@@ -60,6 +60,9 @@ ask "Set up macos defaults? " && {
     ./bin/mac-defaults
 }
 
+# Initialize vscode settings
+ln -s  ~/.config/vscode/settings.json "/Users/ldan/Library/Application Support/Code/User/settings.json"
+
 ## Install
 echo_ok "Bootstrap finished..."
 
