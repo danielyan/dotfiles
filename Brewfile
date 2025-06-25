@@ -8,6 +8,7 @@ brew "yt-dlp"
 brew "batt"
 
 cask "font-fira-code"
+cask "font-iosevka"
 cask "wezterm"
 cask "karabiner-elements"
 cask "iina"
