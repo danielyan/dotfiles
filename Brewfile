@@ -29,3 +29,5 @@ cask "visual-studio-code"
 cask "microsoft-edge"
 cask "mediamate"
 cask "warp"
+cask "obsidian"
+
