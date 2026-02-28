@@ -33,3 +33,6 @@ abbr --add nrd "clear && npm run dev"
 abbr --add l ls -la --color | awk '{k=0;for(i=0;i<=8;i++)k+=((substr($1,i+2,1)~/[rwx]/)*2^(8-i));if(k)printf(" %0o ",k);print}'
 
 abbr --add reset_fcp mv -v "~/Library/Containers/com.apple.FinalCutTrial/Data/Library/Application\ Support/.ffuserdata" ~/.Trash
+
+abbr --add yt --position anywhere --set-cursor "yt-dlp \"%\""
+export PATH="$HOME/.local/bin:$PATH"

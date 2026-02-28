@@ -2,13 +2,13 @@
   "workbench.colorTheme": "Catppuccin Macchiato",
   "security.workspace.trust.untrustedFiles": "open",
   "[javascript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
   },
   "[typescriptreact]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
   },
   "[typescript]": {
-    "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
   },
   "git.autofetch": true,
   "git.confirmSync": false,
@@ -39,5 +39,12 @@
   "catppuccin.italicComments": false,
   "editor.rulers": [80],
   "git.enableSmartCommit": true,
-  "jest.runMode": "on-demand"
+  "jest.runMode": "on-demand",
+  "explorer.confirmDelete": false,
+  "workbench.colorCustomizations": {
+    "editor.selectionBackground": "#135564",
+    "editor.selectionHighlightBackground": "#135564",
+  },
+  "claudeCode.preferredLocation": "panel",
+  "claudeCode.selectedModel": "sonnet",
 }
