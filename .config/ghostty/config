@@ -1,0 +1,12 @@
+font-family = "Iosevka Term"
+font-size = 14
+theme = Catppuccin Macchiato
+
+background-opacity = 0.85
+background-blur=16
+#macos-titlebar-style = hidden
+font-thicken=true
+font-thicken-strength=1
+adjust-cell-height=1
+#scrollback-limit 10
+
