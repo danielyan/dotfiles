@@ -1,0 +1,9 @@
+# Per-device UI state — noisy, don't track
+workspace.json
+workspace-mobile.json
+graph.json
+
+# Runtime / cache
+cache/
+.DS_Store
+*.log
