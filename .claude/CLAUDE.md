@@ -33,6 +33,14 @@ Before answering, check `synthesis/` for existing query-result notes that match 
 
 After answering a substantial query (a recommendation with reasoning, a comparison, a filtered analysis — not a simple count or list), ask: "Want me to save this?" If yes, write a note to `synthesis/` named `query-{kebab-topic}.md` with frontmatter `type: synthesis`, `scope: query-result`, and wikilinks to all referenced items.
 
+### Working on projects
+
+When I ask to "work on" a project (e.g., "work on Awesome App backlog", "let's fix that Awesome App bug"), check `projects/` for a matching project note. If it has a `path` field, navigate to that directory to read code, run commands, and implement changes. The project note's backlog has the bugs/features to work from.
+
+When you implement a feature, fix a bug, or complete an item from a project backlog (`projects/*-backlog.md`), remove the corresponding item from the backlog as part of the same commit. Keep the rest of the backlog untouched. If only part of a multi-part item is done, remove just that part.
+
+After completing a backlog item, re-present the remaining backlog items so the user can pick the next one without having to ask again.
+
 ### Processing
 
 Use `/hatch` to classify, enrich, and file items from `inbox/` into the correct folders.
