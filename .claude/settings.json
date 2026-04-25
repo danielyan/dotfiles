@@ -7,5 +7,29 @@
   "enabledPlugins": {
     "swift-lsp@claude-plugins-official": true
   },
-  "skipDangerousModePermissionPrompt": true
+  "skipDangerousModePermissionPrompt": true,
+  "hooks": {
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '\\e]0;%s\\e\\\\' \"$(basename $PWD)\" > /dev/tty",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '\\e]0;✔ %s\\e\\\\' \"$(basename $PWD)\" > /dev/tty",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
 }

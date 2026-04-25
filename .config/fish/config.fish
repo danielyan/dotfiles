@@ -37,6 +37,12 @@ abbr --add reset_fcp mv -v "~/Library/Containers/com.apple.FinalCutTrial/Data/Li
 abbr --add yt --position anywhere --set-cursor "yt-dlp \"%\""
 export PATH="$HOME/.local/bin:$PATH"
 
+#------ claude wrapper
+function claude --wraps claude
+    set -l project_name (basename $PWD)
+    command claude --name $project_name $argv
+end
+
 #------ knowledge base
 alias kb 'claude --dangerously-skip-permissions --allowedTools "Read" "Glob" "Grep" "Bash(ls *)" "Skill" --append-system-prompt "Read-only knowledge base mode. Never create, edit, or delete files."'
 alias kbq 'claude -p --dangerously-skip-permissions --allowedTools "Read" "Glob" "Grep" "Bash(ls *)" "Skill" --append-system-prompt "Read-only knowledge base mode. Never create, edit, or delete files."'

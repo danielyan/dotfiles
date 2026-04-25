@@ -47,4 +47,8 @@
   },
   "claudeCode.preferredLocation": "panel",
   "claudeCode.selectedModel": "sonnet",
+  "window.nativeTabs": true,
+  "window.openFoldersInNewWindow": "on",
+  "window.openFilesInNewWindow": "on",
+  "chat.disableAIFeatures": true,
 }
