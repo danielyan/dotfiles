@@ -11,3 +11,10 @@ font-thicken-strength=1
 adjust-cell-height=1
 #scrollback-limit 10
 term = xterm-256color
+
+# Toggle Quick Terminal with Cmd+` (or your preferred combo)
+keybind = global:cmd+grave_accent=toggle_quick_terminal
+
+# Make it fill the screen
+quick-terminal-position = top
+quick-terminal-size = 100%,100%
