@@ -37,6 +37,12 @@ abbr --add reset_fcp mv -v "~/Library/Containers/com.apple.FinalCutTrial/Data/Li
 abbr --add yt --position anywhere --set-cursor "yt-dlp \"%\""
 export PATH="$HOME/.local/bin:$PATH"
 
+#------ project shortcuts: type folder name to cd into ~/projects/<name>
+for dir in ~/projects/*/
+    set -l name (basename $dir)
+    function $name --inherit-variable dir; cd $dir; end
+end
+
 #------ claude wrapper
 function claude --wraps claude
     set -l project_name (basename $PWD)
