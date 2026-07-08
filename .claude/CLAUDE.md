@@ -37,7 +37,7 @@ After answering a substantial query (a recommendation with reasoning, a comparis
 
 When I ask to "work on" a project (e.g., "work on Awesome App backlog", "let's fix that Awesome App bug"), check `projects/` for a matching project note. If it has a `path` field, navigate to that directory to read code, run commands, and implement changes. The project note's backlog has the bugs/features to work from.
 
-When you implement a feature, fix a bug, or complete an item from a project backlog (`projects/*-backlog.md`), remove the corresponding item from the backlog as part of the same commit. Keep the rest of the backlog untouched. If only part of a multi-part item is done, remove just that part.
+When you implement a feature, fix a bug, or complete an item from a project note (`projects/project-*.md`), remove the corresponding item from that note's Bugs / Feature Requests / Backlog section as part of the same commit. Keep the rest of the note untouched. If only part of a multi-part item is done, remove just that part.
 
 After completing a backlog item, re-present the remaining backlog items so the user can pick the next one without having to ask again.
 

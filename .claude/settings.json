@@ -31,6 +31,8 @@
   "enabledPlugins": {
     "swift-lsp@claude-plugins-official": true
   },
+  "effortLevel": "medium",
+  "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
-  "effortLevel": "medium"
+  "model": "opus"
 }
