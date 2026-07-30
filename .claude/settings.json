@@ -1,22 +1,59 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git fetch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git stash:*)",
+      "Bash(git restore:*)"
+    ]
+  },
+  "model": "opus",
   "hooks": {
-    "PreToolUse": [
+    "UserPromptSubmit": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "printf '\\e]0;%s\\e\\\\' \"$(basename $PWD)\" > /dev/tty",
+            "command": "printf '\\e]0;⋯ %s\\e\\\\' \"$(basename \"$PWD\")\" > /dev/tty",
             "async": true
           }
         ]
       }
     ],
-    "PostToolUse": [
+    "PreToolUse": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "printf '\\e]0;✔ %s\\e\\\\' \"$(basename $PWD)\" > /dev/tty",
+            "command": "printf '\\e]0;⋯ %s\\e\\\\' \"$(basename \"$PWD\")\" > /dev/tty",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '\\e]0;✔ %s\\e\\\\' \"$(basename \"$PWD\")\" > /dev/tty",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "printf '\\e]0;❓ %s\\e\\\\' \"$(basename \"$PWD\")\" > /dev/tty",
             "async": true
           }
         ]
@@ -29,10 +66,10 @@
     "padding": 0
   },
   "enabledPlugins": {
-    "swift-lsp@claude-plugins-official": true
+    "swift-lsp@claude-plugins-official": true,
+    "clangd-lsp@claude-plugins-official": true
   },
   "effortLevel": "medium",
   "tui": "fullscreen",
-  "skipDangerousModePermissionPrompt": true,
-  "model": "opus"
+  "skipDangerousModePermissionPrompt": true
 }
