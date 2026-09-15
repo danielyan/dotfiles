@@ -1,72 +1,163 @@
-export PATH="/opt/homebrew/bin/:$PATH"
+#!/usr/bin/env bash
+# yadm bootstrap — provision a Mac from scratch.
+#
+# Idempotent: safe to re-run at any time. Every step checks current state
+# before acting.
+#
+#   bootstrap            provision a normal workstation
+#   bootstrap --server   also apply always-on server config (the Mac Mini)
+#
+# See vault: projects/project-machine-continuity.md
+
+set -uo pipefail
+
+export PATH="/opt/homebrew/bin:$PATH"
+
+SERVER_MODE=0
+[ "${1:-}" = "--server" ] && SERVER_MODE=1
 
 ## Functions ###############################################
 ask() {
     local prompt="${1:-Are you sure? Type 'y' or 'yes' to continue: }"
-    read -p "$prompt" response
+    local response
+    read -r -p "$prompt" response
     response=$(echo "$response" | tr '[:upper:]' '[:lower:]')
-
-    if [[ "$response" == "y" || "$response" == "yes" ]]; then
-        return 0
-    else
-        return 1
-    fi
+    [[ "$response" == "y" || "$response" == "yes" ]]
 }
 
-command_exists() {
-    command -v "$1" &> /dev/null
-}
+command_exists() { command -v "$1" &>/dev/null; }
 
-echo_ok() {
-    echo "[✓] $1"
-}
-
-echo_err() {
-    echo "[✗] $1"
-}
-
-echo_warn() {
-    echo "[➞] $1"
-}
+echo_ok()   { echo "[✓] $1"; }
+echo_err()  { echo "[✗] $1"; }
+echo_warn() { echo "[➞] $1"; }
 ############################################################
+
 echo_ok "Bootstrap starting..."
 
+## Apple updates ###########################################
 if command_exists softwareupdate; then
     ask "Install apple updates? " && {
-        echo_ok "Installing Apple updates..."
-        sudo softwareupdate -i -a
-        echo_ok "Updates installed successfully."
+        sudo softwareupdate -i -a && echo_ok "Updates installed."
     }
 else
-    echo_warn "softwareupdate is not installed, skipping Apple updates"
+    echo_warn "softwareupdate not available, skipping"
+fi
+
+## Homebrew ################################################
+if ! command_exists brew; then
+    echo_ok "Installing Homebrew..."
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    export PATH="/opt/homebrew/bin:$PATH"
 fi
 
 echo_ok "Updating Homebrew..."
 brew update
-brew doctor
 brew upgrade
 
-echo_ok "Installing apps..."
-brew bundle
+echo_ok "Installing apps from Brewfile..."
+brew bundle --file="$HOME/Brewfile"
 
-## Configure 
-# Install fish as default shell
-echo_ok "Installing fish as default shell..."
-echo "/opt/homebrew/bin/fish" | sudo tee -a /etc/shells
-chsh -s /opt/homebrew/bin/fish
+## Shell ###################################################
+FISH_PATH="$(command -v fish || echo /opt/homebrew/bin/fish)"
 
-ask "Set up macos defaults? " && {
-    echo_ok "Set up MacOs defaults..."
-    ./bin/mac-defaults
-}
+if [ -x "$FISH_PATH" ]; then
+    if ! grep -qxF "$FISH_PATH" /etc/shells; then
+        echo_ok "Registering fish in /etc/shells..."
+        echo "$FISH_PATH" | sudo tee -a /etc/shells >/dev/null
+    fi
 
-# Initialize vscode settings
-ln -s  ~/.config/vscode/settings.json "/Users/ldan/Library/Application Support/Code/User/settings.json"
+    if [ "$SHELL" != "$FISH_PATH" ]; then
+        echo_ok "Setting fish as the default shell..."
+        chsh -s "$FISH_PATH"
+    else
+        echo_ok "fish is already the default shell"
+    fi
+else
+    echo_err "fish not found, leaving shell unchanged"
+fi
 
-# Install vscode extensions
-echo_ok "Installing VSCode extensions..."
-cat ~/.config/vscode/extensions | xargs -L 1 code --install-extension
+# Prompt theme and plugins (fisher is declarative via fish_plugins).
+if [ -f "$HOME/.config/fish/fish_plugins" ] && command_exists fish; then
+    echo_ok "Syncing fish plugins..."
+    fish -c "fisher update" || echo_warn "fisher update failed"
+fi
 
-## Install
-echo_ok "Bootstrap finished..."
+## macOS defaults ##########################################
+if [ -x "$HOME/bin/mac-defaults" ]; then
+    ask "Set up macOS defaults? " && "$HOME/bin/mac-defaults"
+fi
 
+## VSCode ##################################################
+VSCODE_USER_DIR="$HOME/Library/Application Support/Code/User"
+if [ -d "$(dirname "$VSCODE_USER_DIR")" ]; then
+    mkdir -p "$VSCODE_USER_DIR"
+    if [ ! -L "$VSCODE_USER_DIR/settings.json" ]; then
+        # -f so re-running replaces a stale regular file rather than failing.
+        ln -sf "$HOME/.config/vscode/settings.json" "$VSCODE_USER_DIR/settings.json"
+        echo_ok "Linked VSCode settings"
+    else
+        echo_ok "VSCode settings already linked"
+    fi
+fi
+
+if command_exists code && [ -f "$HOME/.config/vscode/extensions" ]; then
+    echo_ok "Installing VSCode extensions..."
+    # --force makes already-installed extensions a no-op instead of an error.
+    xargs -L 1 code --force --install-extension < "$HOME/.config/vscode/extensions"
+fi
+
+## SSH #####################################################
+mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
+if [ -f "$HOME/.ssh/config.mini" ] && ! grep -q "config.mini" "$HOME/.ssh/config" 2>/dev/null; then
+    echo "Include ~/.ssh/config.mini" | cat - "$HOME/.ssh/config" 2>/dev/null \
+        > "$HOME/.ssh/config.tmp" || echo "Include ~/.ssh/config.mini" > "$HOME/.ssh/config.tmp"
+    mv "$HOME/.ssh/config.tmp" "$HOME/.ssh/config"
+    chmod 600 "$HOME/.ssh/config"
+    echo_ok "Wired ~/.ssh/config.mini into ~/.ssh/config"
+fi
+
+# Keys are per-machine and never synced — generate one if this host lacks it.
+if [ ! -f "$HOME/.ssh/id_ed25519" ]; then
+    ask "Generate an SSH key for this machine? " && {
+        ssh-keygen -t ed25519 -C "$(whoami)@$(scutil --get LocalHostName 2>/dev/null || hostname)" \
+            -f "$HOME/.ssh/id_ed25519"
+        echo_ok "Add this key to GitHub:"
+        cat "$HOME/.ssh/id_ed25519.pub"
+        command_exists gh && ask "Add it via gh now? " && \
+            gh ssh-key add "$HOME/.ssh/id_ed25519.pub" -t "$(scutil --get LocalHostName 2>/dev/null || hostname)"
+    }
+fi
+
+## Syncthing ###############################################
+if command_exists syncthing; then
+    if ! brew services list | grep -q '^syncthing.*started'; then
+        echo_ok "Starting syncthing..."
+        brew services start syncthing
+    else
+        echo_ok "syncthing already running"
+    fi
+    echo_warn "Pair devices and share ~/.claude at http://127.0.0.1:8384"
+fi
+
+## Server mode (the always-on Mac Mini) ####################
+if [ "$SERVER_MODE" -eq 1 ]; then
+    echo_ok "Applying always-on server configuration..."
+
+    # Never sleep; wake after power loss; allow background work while idle.
+    sudo pmset -a sleep 0 disksleep 0 powernap 1
+    sudo pmset -a autorestart 1 2>/dev/null || echo_warn "autorestart unsupported"
+    echo_ok "Power management configured"
+
+    # iCloud evicts files it thinks are cold. A headless service reading a
+    # dataless placeholder fails, so pin the vault and keep it pinned.
+    VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Notes"
+    if [ -d "$VAULT" ]; then
+        brctl download "$VAULT" >/dev/null 2>&1 && echo_ok "Vault pinned locally"
+    else
+        echo_warn "Vault not present yet — re-run once iCloud has synced"
+    fi
+    echo_warn "Manually enable: Settings > General > Sharing > Screen Sharing"
+    echo_warn "Manually enable: Settings > Users & Groups > Automatic login"
+fi
+
+echo_ok "Bootstrap finished."

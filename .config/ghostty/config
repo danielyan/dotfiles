@@ -13,3 +13,7 @@ adjust-cell-height=1
 term = xterm-256color
 
 
+
+# Jump straight to the persistent tmux session on the Mini.
+# See vault: projects/project-machine-continuity.md
+keybind = cmd+shift+m=text:mini\n

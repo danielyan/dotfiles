@@ -1,0 +1,36 @@
+// Syncthing ignore list for ~/.claude
+// Managed by yadm. See vault: projects/project-machine-continuity.md
+//
+// Rule: yadm owns declarative config, Syncthing owns runtime state.
+// Never let both manage the same file.
+
+// --- yadm owns these: must NOT be synced by Syncthing ---
+/CLAUDE.md
+/settings.json
+/settings.local.json
+/settings.json.bak
+/settings.json.orig
+/skills
+
+// --- machine-specific state: never useful on the other machine ---
+/cache
+/paste-cache
+/telemetry
+/statsig
+/shell-snapshots
+/session-env
+/daemon
+/daemon.log
+/ide
+/.last-cleanup
+
+// --- reinstallable: re-fetched on demand, large and churny ---
+/plugins
+
+// --- transient locks and sockets ---
+(?d)*.lock
+(?d)*.sock
+(?d).DS_Store
+
+// --- everything else syncs: projects/, history.jsonl, todos/,
+//     tasks/, file-history/, backups/, chrome/, jobs/

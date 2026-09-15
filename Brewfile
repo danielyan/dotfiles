@@ -8,6 +8,13 @@ brew "yt-dlp"
 brew "batt"
 brew "fisher"
 
+# --- machine continuity: see vault projects/project-machine-continuity.md ---
+brew "tmux"          # persistent sessions on the Mini (the continuity mechanism)
+brew "mosh"          # survives lid-close and network changes
+brew "syncthing"     # ~/.claude runtime state between machines
+brew "atuin"         # shell history synced across machines
+brew "jq"
+
 cask "font-fira-code"
 cask "font-iosevka"
 cask "karabiner-elements"
@@ -34,3 +41,4 @@ cask "font-meslo-lg-nerd-font"
 # cask "grandperspective"
 cask "ghostty"
 cask "claude-code"
+cask "tailscale-app"   # mesh network + Tailscale SSH

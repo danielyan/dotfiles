@@ -36,6 +36,12 @@ abbr --add reset_fcp mv -v "~/Library/Containers/com.apple.FinalCutTrial/Data/Li
 
 abbr --add yt --position anywhere --set-cursor "yt-dlp \"%\""
 export PATH="$HOME/.local/bin:$PATH"
+fish_add_path $HOME/bin
+
+#------ atuin: shell history shared across machines
+if status is-interactive; and command -q atuin
+    atuin init fish | source
+end
 
 #------ project shortcuts: type folder name to cd into ~/projects/<name>
 for dir in ~/projects/*/
