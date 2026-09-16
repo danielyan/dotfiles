@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# doctor — verify the Mini/Air continuity chain and say what to fix.
+#
+# Safe and read-only: checks state, changes nothing. Run it on either machine,
+# as often as you like. Each failed check prints the exact remedy.
+#
+# See vault: projects/project-machine-continuity.md
+
+set -uo pipefail
+
+MINI_HOST="${MINI_HOST:-mini}"
+TS_CLI="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+SYNCTHING_API="${SYNCTHING_API:-http://127.0.0.1:8384}"
+
+pass=0; warn=0; fail=0
+
+ok()     { printf '  \033[32m✓\033[0m %s\n' "$1"; pass=$((pass+1)); }
+no()     { printf '  \033[31m✗\033[0m %s\n' "$1"; [ $# -gt 1 ] && printf '      → %s\n' "$2"; fail=$((fail+1)); }
+maybe()  { printf '  \033[33m➞\033[0m %s\n' "$1"; [ $# -gt 1 ] && printf '      → %s\n' "$2"; warn=$((warn+1)); }
+section(){ printf '\n\033[1m%s\033[0m\n' "$1"; }
+
+have() { command -v "$1" &>/dev/null; }
+
+# Is this the always-on machine? Nothing to connect to if so.
+IS_SERVER=0
+[ "$(pmset -g custom 2>/dev/null | awk '/sleep/{print $2; exit}')" = "0" ] && IS_SERVER=1
+
+section "Packages"
+for pkg in tmux mosh syncthing atuin; do
+    if have "$pkg"; then ok "$pkg"
+    else no "$pkg missing" "brew bundle --file=~/Brewfile"; fi
+done
+if [ -d /Applications/Tailscale.app ]; then ok "Tailscale.app"
+else no "Tailscale.app missing" "brew bundle --file=~/Brewfile, then open it and sign in"; fi
+
+section "Dotfiles"
+if have yadm; then
+    if [ -z "$(yadm status --porcelain 2>/dev/null)" ]; then ok "yadm working tree clean"
+    else maybe "yadm has uncommitted changes" "yadm status"; fi
+
+    yadm fetch --quiet 2>/dev/null
+    behind=$(yadm rev-list --count HEAD..@{u} 2>/dev/null || echo 0)
+    ahead=$(yadm rev-list --count @{u}..HEAD 2>/dev/null || echo 0)
+    [ "$behind" -gt 0 ] && maybe "yadm is $behind commit(s) behind origin" "yadm pull" || true
+    [ "$ahead"  -gt 0 ] && maybe "yadm is $ahead commit(s) ahead of origin"  "yadm push" || true
+    [ "$behind" -eq 0 ] && [ "$ahead" -eq 0 ] && ok "yadm in sync with origin"
+else
+    no "yadm missing" "brew install yadm"
+fi
+
+section "Network"
+if [ -x "$TS_CLI" ]; then
+    if "$TS_CLI" status >/dev/null 2>&1; then
+        ok "Tailscale connected"
+    else
+        no "Tailscale not connected" "open -a Tailscale and sign in"
+    fi
+else
+    no "Tailscale CLI not found" "install Tailscale.app"
+fi
+
+if [ "$IS_SERVER" -eq 1 ]; then
+    section "Server role"
+    ok "this machine is configured as always-on (pmset sleep 0)"
+    if pgrep -q tmux 2>/dev/null; then
+        ok "tmux sessions running: $(tmux ls 2>/dev/null | wc -l | tr -d ' ')"
+    else
+        maybe "no tmux sessions running yet" "tmux new -s main"
+    fi
+    VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Notes"
+    if [ -d "$VAULT" ]; then
+        if find "$VAULT" -name '*.icloud' -print -quit 2>/dev/null | grep -q .; then
+            maybe "vault has evicted (placeholder) files" "brctl download \"$VAULT\""
+        else
+            ok "vault fully materialised locally"
+        fi
+    else
+        maybe "vault not present" "sign into iCloud and wait for sync"
+    fi
+else
+    section "Reaching the Mini"
+    if grep -q "config.mini" "$HOME/.ssh/config" 2>/dev/null; then
+        ok "~/.ssh/config includes config.mini"
+    else
+        no "~/.ssh/config does not include config.mini" "yadm bootstrap"
+    fi
+
+    if ssh -o ConnectTimeout=5 -o BatchMode=yes "$MINI_HOST" true 2>/dev/null; then
+        ok "ssh $MINI_HOST"
+
+        remote_user=$(ssh -o BatchMode=yes "$MINI_HOST" 'whoami' 2>/dev/null)
+        if [ "$remote_user" = "$(whoami)" ]; then
+            ok "username matches on both machines ($remote_user)"
+        else
+            no "username mismatch: local '$(whoami)' vs mini '$remote_user'" \
+               "Claude session dirs are keyed on \$HOME; transcripts will NOT line up"
+        fi
+
+        if ssh -o BatchMode=yes "$MINI_HOST" 'command -v tmux' >/dev/null 2>&1; then
+            sessions=$(ssh -o BatchMode=yes "$MINI_HOST" 'tmux ls 2>/dev/null | wc -l' 2>/dev/null | tr -d ' ')
+            ok "tmux on mini (${sessions:-0} session(s))"
+        else
+            no "tmux not installed on mini" "ssh $MINI_HOST 'brew install tmux'"
+        fi
+
+        if have mosh; then
+            if ssh -o BatchMode=yes "$MINI_HOST" 'command -v mosh-server' >/dev/null 2>&1; then
+                ok "mosh available on both ends"
+            else
+                maybe "mosh-server missing on mini" "ssh $MINI_HOST 'brew install mosh'"
+            fi
+        fi
+    else
+        no "cannot ssh to '$MINI_HOST'" "check Tailscale on both ends; is the Mini awake?"
+    fi
+fi
+
+section "Claude state sync"
+if [ -f "$HOME/.claude/.stignore" ]; then ok "~/.claude/.stignore present"
+else no "~/.claude/.stignore missing" "yadm checkout .claude/.stignore"; fi
+
+if have syncthing; then
+    if curl -sf -m 3 -o /dev/null "$SYNCTHING_API/rest/noauth/health"; then
+        ok "syncthing running"
+        apikey=$(sed -n 's:.*<apikey>\(.*\)</apikey>.*:\1:p' \
+            "$HOME/Library/Application Support/Syncthing/config.xml" 2>/dev/null | head -1)
+        if [ -n "$apikey" ]; then
+            folders=$(curl -sf -m 5 -H "X-API-Key: $apikey" "$SYNCTHING_API/rest/config/folders" 2>/dev/null)
+            if echo "$folders" | grep -q '\.claude'; then
+                ok "~/.claude shared in syncthing"
+            else
+                no "~/.claude not shared yet" "add it at $SYNCTHING_API and share with the other device"
+            fi
+            devices=$(curl -sf -m 5 -H "X-API-Key: $apikey" "$SYNCTHING_API/rest/config/devices" 2>/dev/null \
+                      | grep -o '"deviceID"' | wc -l | tr -d ' ')
+            [ "${devices:-0}" -gt 1 ] && ok "syncthing paired with ${devices} device(s) incl. self" \
+                || no "no peer device paired" "pair the other machine at $SYNCTHING_API"
+        fi
+    else
+        no "syncthing not running" "brew services start syncthing"
+    fi
+fi
+
+conflicts=$(find "$HOME/.claude" -name '*sync-conflict*' 2>/dev/null | wc -l | tr -d ' ')
+[ "${conflicts:-0}" -gt 0 ] \
+    && maybe "$conflicts syncthing conflict file(s) in ~/.claude" "keep the larger, delete the rest" \
+    || ok "no sync conflicts"
+
+section "Shell"
+if have atuin; then
+    if [ -f "$HOME/.local/share/atuin/session" ]; then ok "atuin logged in"
+    else maybe "atuin not logged in" "atuin register  (or atuin login), then atuin sync"; fi
+fi
+if [ -f "$HOME/.config/fish/functions/mini.fish" ]; then ok "mini function installed"
+else no "mini function missing" "yadm checkout .config/fish/functions/mini.fish"; fi
+
+printf '\n\033[1m%d passed, %d warnings, %d failed\033[0m\n' "$pass" "$warn" "$fail"
+[ "$fail" -eq 0 ]

@@ -151,6 +151,119 @@ it's the single most important thing to get right during Setup Assistant.
 
 ---
 
+## Preparing the Air to work with the Mini
+
+Do these in order. The Mini must be set up first — it's the thing being
+connected *to*. Run `doctor` after each step to see what's still outstanding.
+
+### 1. Get the packages
+
+```
+yadm pull
+brew bundle --file=~/Brewfile
+```
+
+This installs tmux, mosh, syncthing, atuin and Tailscale. Everything below
+depends on it.
+
+### 2. Run bootstrap
+
+```
+yadm bootstrap
+```
+
+On the Air, plain — **no `--server`**. You do not want a laptop that never
+sleeps. This wires `~/.ssh/config.mini` into `~/.ssh/config`, starts Syncthing,
+and offers to generate an SSH key for GitHub.
+
+### 3. Join the tailnet
+
+```
+open -a Tailscale
+```
+
+Sign in with the same account as the Mini. Then confirm the Air can see it:
+
+```
+tailscale status
+ssh mini true && echo reachable
+```
+
+MagicDNS is what makes the bare name `mini` resolve. If `ssh mini` fails but
+`tailscale status` lists the machine, MagicDNS is off — enable it in the
+Tailscale admin console under DNS.
+
+### 4. Pair Syncthing
+
+Open `http://127.0.0.1:8384` on both machines.
+
+1. On the Mini: **Actions → Show ID**, copy the device ID.
+2. On the Air: **Add Remote Device**, paste it, accept.
+3. On the Mini: add a folder at `~/.claude`, share it with the Air.
+4. On the Air: accept the shared folder, point it at `~/.claude`.
+
+`~/.claude/.stignore` is already in place on both machines via yadm, so
+Syncthing picks it up automatically — caches, plugins and the yadm-owned files
+are excluded from the first scan onward.
+
+**Check the first sync before trusting it.** If `~/.claude/plugins` or
+`~/.claude/cache` start appearing on the other machine, the `.stignore` is not
+being read and you should stop and fix that before it mirrors gigabytes.
+
+### 5. Sync shell history
+
+```
+atuin register     # first machine only; use `atuin login` on the second
+atuin sync
+```
+
+Optional, but it means the command you ran on the Mini this morning is in the
+Air's history search this afternoon.
+
+### 6. Verify the whole chain
+
+```
+doctor
+```
+
+Everything should be green. Then the real test:
+
+```
+mini
+```
+
+You should land in a tmux session on the Mini. Detach with `ctrl-a d`, run
+`mini` again, and confirm you get the *same* session back — that round trip is
+the entire model working.
+
+---
+
+## doctor
+
+`bin/doctor` checks every link in the chain and prints the exact remedy for
+anything broken. It is read-only and safe to run at any time.
+
+```
+Packages
+  ✗ tmux missing
+      → brew bundle --file=~/Brewfile
+Reaching the Mini
+  ✗ cannot ssh to 'mini'
+      → check Tailscale on both ends; is the Mini awake?
+```
+
+It detects which machine it's on (via `pmset`) and checks accordingly: on the
+Mini it looks at tmux sessions and whether iCloud has evicted the vault; on the
+Air it checks reachability, that tmux and mosh exist on the far end, and that
+Syncthing is actually paired.
+
+The check worth knowing about is **username match**. It compares `whoami` on
+both machines and fails loudly if they differ, because that's the one
+misconfiguration that breaks Claude session continuity silently — files sync
+fine, they just land in a directory the other machine never reads.
+
+Exit code is non-zero if any check failed, so it works in a script.
+
 ## Before you go offline
 
 ```
@@ -217,6 +330,9 @@ System Settings; there's no reliable scriptable equivalent.
 
 ## When something breaks
 
+Start with `doctor` — it checks every link and names the fix. The cases below
+are the ones it can't resolve for you.
+
 **`mini` says it can't reach the host.** Check `tailscale status` on both ends.
 If the Mini is up but unreachable it usually rebooted and hasn't logged in —
 Screen Share in and check.
@@ -250,6 +366,7 @@ never line up.
 .config/vscode/          settings + extension list
 .claude/                 CLAUDE.md, settings.json, skills, .stignore
 .ssh/config.mini         Mini host config (no key material)
+bin/doctor               verify the whole chain, print remedies
 bin/preflight            prepare the Air for offline work
 bin/mac-setup            one-liner bootstrap for a fresh Mac
 bin/mac-defaults         macOS system defaults

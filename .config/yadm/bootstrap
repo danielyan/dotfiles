@@ -109,9 +109,13 @@ fi
 ## SSH #####################################################
 mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
 if [ -f "$HOME/.ssh/config.mini" ] && ! grep -q "config.mini" "$HOME/.ssh/config" 2>/dev/null; then
-    echo "Include ~/.ssh/config.mini" | cat - "$HOME/.ssh/config" 2>/dev/null \
-        > "$HOME/.ssh/config.tmp" || echo "Include ~/.ssh/config.mini" > "$HOME/.ssh/config.tmp"
-    mv "$HOME/.ssh/config.tmp" "$HOME/.ssh/config"
+    # Include must come first: ssh takes the FIRST value it sees for any
+    # keyword, so a later Host * block would otherwise win over the Mini's.
+    tmp=$(mktemp)
+    echo "Include ~/.ssh/config.mini" > "$tmp"
+    echo "" >> "$tmp"
+    [ -f "$HOME/.ssh/config" ] && cat "$HOME/.ssh/config" >> "$tmp"
+    mv "$tmp" "$HOME/.ssh/config"
     chmod 600 "$HOME/.ssh/config"
     echo_ok "Wired ~/.ssh/config.mini into ~/.ssh/config"
 fi
