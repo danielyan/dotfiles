@@ -1,10 +1,26 @@
-#!/bin/bash
-export PATH="/opt/homebrew/bin/:$PATH"
+#!/usr/bin/env bash
+# Provision a fresh Mac from nothing. Passes its arguments to yadm bootstrap,
+# so --server works through the curl one-liner:
+#
+#   curl -L .../bin/mac-setup | bash
+#   curl -L .../bin/mac-setup | bash -s -- --server
+set -euo pipefail
 
-echo "Installing homebrew"
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install.sh)"
+export PATH="/opt/homebrew/bin:$PATH"
 
-brew install yadm gpg
+if ! command -v brew >/dev/null 2>&1; then
+    echo "Installing Homebrew"
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    export PATH="/opt/homebrew/bin:$PATH"
+fi
 
-yadm clone https://github.com/danielyan/dotfiles.git
-yadm bootstrap
+command -v yadm >/dev/null 2>&1 || brew install yadm gpg
+
+# Re-running on a machine that already has the dotfiles should not fail.
+if [ -d "$HOME/.local/share/yadm/repo.git" ]; then
+    yadm pull --ff-only
+else
+    yadm clone https://github.com/danielyan/dotfiles.git
+fi
+
+yadm bootstrap "$@"

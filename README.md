@@ -142,125 +142,20 @@ it's the single most important thing to get right during Setup Assistant.
 
 ---
 
-## Preparing the Air to work with the Mini
+## Setting it up
 
-Do these in order. The Mini must be set up first — it's the thing being
-connected *to*. Run `mini doctor` after each step to see what's still outstanding.
+Step-by-step for both machines is in **`SETUP.md`**. The two constraints that
+setup depends on, and the reasons behind them:
 
-### 1. Get the packages
+**The Mini's username must be `ldan`.** Session directories are keyed on the
+absolute working directory. A mismatch syncs files fine but lands them where the
+other machine never looks — silent failure.
 
-```
-yadm pull
-brew bundle --file=~/Brewfile
-```
-
-This installs tmux, mosh, syncthing, atuin and Tailscale. Everything below
-depends on it.
-
-### 2. Run bootstrap
-
-```
-yadm bootstrap
-```
-
-On the Air, plain — **no `--server`**. You do not want a laptop that never
-sleeps. This wires `~/.ssh/config.mini` into `~/.ssh/config`, starts Syncthing,
-and offers to generate an SSH key for GitHub.
-
-### 3. Join the tailnet
-
-```
-open -a Tailscale
-```
-
-Sign in with the same account as the Mini. Then confirm the Air can see it:
-
-```
-tailscale status
-ssh mini true && echo reachable
-```
-
-MagicDNS is what makes the bare name `mini` resolve. If `ssh mini` fails but
-`tailscale status` lists the machine, MagicDNS is off — enable it in the
-Tailscale admin console under DNS.
-
-### 4. Pair Syncthing
-
-```
-mini pair
-```
-
-That's it. Syncthing's setup is normally a GUI copy-paste ritual because each
-device needs the other's device ID — but we already have ssh to the Mini, so
-`mini pair` just asks it. It reads both device IDs, introduces the two machines
-to each other, and creates the `claude-state` folder on both ends with the right
-settings. Idempotent: re-running reports what already exists and changes nothing.
-
-It refuses to proceed unless `~/.claude/.stignore` exists on **both** machines,
-because `.stignore` is on Syncthing's internal-files list and is **not synced
-between devices**. Each machine needs its own copy, which yadm provides. Without
-it on the far end, first sync would pull `plugins/` and `cache/` — exactly what
-the ignore file exists to prevent. So on the Mini, `yadm clone` must happen
-before this step.
-
-One ordering note it can't check for you: because the Mini starts empty, **the
-Air is authoritative**. Pair before doing real work on the Mini, or first sync
-becomes a merge of two divergent transcript sets and `history.jsonl` conflicts
-immediately.
-
-#### What it configures, and why
-
-| Setting | Value | Why |
-|---|---|---|
-| Folder ID / path | `claude-state` → `~/.claude` | |
-| Type | Send & Receive | Bidirectional |
-| **Versioning** | **Staggered, 30 days** | The one that matters. Transcripts are not reproducible — after a bad sync there is nothing to re-derive them from. Keeps one version per 30s for an hour, hourly for a day, daily for 30 days. Lands in `.stversions`, which is not synced |
-| Watch for Changes | On, 10s delay | Without it, changes wait for the hourly rescan |
-| Full rescan | 3600s | Safety net behind the watcher |
-| **Max Conflicts** | **10** | Never 0. `history.jsonl` conflicts occasionally, and 0 discards one machine's writes silently instead of leaving a copy |
-| **Ignore Delete** | **Off** | Looks like a safety net, isn't — stale files accumulate forever and genuine deletions stop propagating. Versioning is the correct net |
-| Ignore Permissions | Off | Same user both ends |
-
-If you ever do this by hand in the GUI instead, note that `syncthing cli config
-folders add-json` does **not** merge with defaults — every omitted field becomes
-a Go zero value. Leaving out `maxConflicts` sets it to 0 and leaving out
-`fsWatcherEnabled` sets it to false, which is why `pair` writes the definition in
-full rather than patching.
-
-#### Check the first sync before trusting it
-
-If `~/.claude/plugins` or `~/.claude/cache` start appearing on the other machine,
-the ignore file is not being read. Stop and fix that before it mirrors gigabytes.
-`mini doctor` verifies the folder is shared, the watcher is on, and versioning is
-configured.
-
-### 5. Sync shell history
-
-```
-atuin register     # first machine only; use `atuin login` on the second
-atuin sync
-```
-
-Optional, but it means the command you ran on the Mini this morning is in the
-Air's history search this afternoon.
-
-### 6. Verify the whole chain
-
-```
-mini doctor
-```
-
-Everything should be green. Then the real test:
-
-```
-mini
-```
-
-You should land in a tmux session on the Mini. Detach with `ctrl-a d`, run
-`mini` again, and confirm you get the *same* session back — that round trip is
-the entire model working.
-
----
+**`.stignore` is not synced.** Syncthing treats it as an internal file, so each
+machine needs its own copy from yadm. That makes ordering load-bearing:
+`yadm clone` on the Mini *before* pairing, or first sync pulls `plugins/` and
+`cache/` precisely because the ignore file isn't there yet. `mini pair` enforces
+this rather than trusting you to remember.
 
 ## The `mini` command
 
@@ -345,47 +240,30 @@ dirty tree.
 
 ---
 
-## Setting up a new machine
+## bootstrap
 
-One command on a fresh Mac:
-
-```
-curl -L 'https://raw.githubusercontent.com/danielyan/dotfiles/refs/heads/main/bin/mac-setup' | bash
-```
-
-That installs Homebrew and yadm, clones this repo over `$HOME`, and runs
-`bootstrap`. Or do it by hand:
+`.config/yadm/bootstrap` provisions a machine and is **idempotent** — every step
+checks current state first, so re-running is safe and is the normal way to apply
+new Brewfile entries.
 
 ```
-brew install yadm
-yadm clone https://github.com/danielyan/dotfiles.git
 yadm bootstrap            # a workstation, e.g. the Air
 yadm bootstrap --server   # an always-on machine, e.g. the Mini
 ```
 
-`bootstrap` is **idempotent** — every step checks the current state first, so
-re-running it is safe and is the normal way to apply new Brewfile entries. It:
+It installs Homebrew if missing then runs `brew bundle`, makes fish the default
+shell, symlinks VSCode settings and installs extensions with `--force` so
+already-installed ones are a no-op, wires `~/.ssh/config.mini` into
+`~/.ssh/config`, offers to generate a **per-machine** SSH key for GitHub, and
+starts Syncthing.
 
-- installs Homebrew if missing, then `brew bundle` from the `Brewfile`
-- registers fish in `/etc/shells` and makes it the default shell, if it isn't
-- symlinks VSCode settings and installs extensions with `--force` so
-  already-installed ones are a no-op instead of an error
-- wires `~/.ssh/config.mini` into `~/.ssh/config`
-- offers to generate an SSH key **for this machine** and add it to GitHub. Keys
-  are deliberately per-machine so one can be revoked without affecting the other
-- starts Syncthing and points you at `http://127.0.0.1:8384` to pair devices
+`--server` additionally applies `pmset -a sleep 0 disksleep 0 powernap 1
+autorestart 1` — never sleep, restart after a power cut — and pins the vault.
+Screen Sharing and automatic login have no reliable scriptable equivalent and
+stay manual.
 
-`--server` additionally applies the always-on configuration:
-
-```
-sudo pmset -a sleep 0 disksleep 0 powernap 1 autorestart 1
-```
-
-— never sleep, and restart automatically after a power cut. It also pins the
-vault. Screen Sharing and automatic login still have to be enabled by hand in
-System Settings; there's no reliable scriptable equivalent.
-
----
+Pairing is deliberately *not* in bootstrap: it needs the far end reachable over
+ssh, which bootstrap can't guarantee. That's `mini pair`, run later.
 
 ## When something breaks
 
@@ -428,9 +306,10 @@ never line up.
 bin/mini                 the one command: connect, doctor, preflight, ...
 .local/lib/mini/         its subcommands, one file each, plus tests.sh
 bin/mac-setup            one-liner bootstrap for a fresh Mac
+SETUP.md                 start-to-finish setup for both machines
 bin/mac-defaults         macOS system defaults
 Brewfile                 every package, declarative
 ```
 
-Design notes, decisions, and remaining work live in the Obsidian vault at
-`projects/project-machine-continuity.md`.
+Setup instructions: `SETUP.md`. Design notes, decisions, and remaining work
+live in the Obsidian vault at `projects/project-machine-continuity.md`.
