@@ -91,5 +91,59 @@ check "folder is bidirectional" "sendreceive" "$(val "['type']")"
 check "both devices are shared" "2" "$(python3 -c "import json;d=json.load(open('$stub_dir/folder.json'));print(len(d['devices']))" 2>/dev/null)"
 check "peer device is included" "PEERID" "$json"
 
+echo "land: survey and confirmation"
+# A fixture with one repo ahead, one dirty, one with no remote.
+land_fix=$(mktemp -d)
+git init -q --bare "$land_fix/up.git"
+git init -q "$land_fix/seed" >/dev/null
+( cd "$land_fix/seed" && git config user.email t@t && git config user.name t \
+  && echo a > f && git add . && git commit -qm init && git branch -M main \
+  && git remote add origin ../up.git && git push -q origin main ) >/dev/null 2>&1
+git clone -q "$land_fix/up.git" "$land_fix/p/ahead" 2>/dev/null
+mkdir -p "$land_fix/p"
+git clone -q "$land_fix/up.git" "$land_fix/p/ahead" 2>/dev/null
+( cd "$land_fix/p/ahead" && git config user.email t@t && git config user.name t \
+  && echo b >> f && git commit -qam "offline work" ) >/dev/null 2>&1
+git clone -q "$land_fix/up.git" "$land_fix/p/dirtyrepo" 2>/dev/null
+echo scratch > "$land_fix/p/dirtyrepo/uncommitted"
+git init -q "$land_fix/p/noremote" >/dev/null
+
+# ssh stub: reachability probe succeeds, remote catch-up returns nothing.
+cat > "$stub_dir/ssh" <<'STUB'
+#!/usr/bin/env bash
+for a in "$@"; do [ "$a" = "true" ] && exit 0; done
+exit 0
+STUB
+chmod +x "$stub_dir/ssh"
+
+out=$(printf 'n\n' | PROJECTS_DIR="$land_fix/p" "$MINI" land 2>&1)
+check "land finds the repo that is ahead" "ahead (1 commit(s))" "$out"
+check "land reports the dirty repo" "dirtyrepo — uncommitted changes" "$out"
+refute() { if [[ "$3" != *"$2"* ]]; then printf '  ✓ %s\n' "$1"; pass=$((pass+1));
+           else printf '  ✗ %s (found: %s)\n' "$1" "$2"; fail=$((fail+1)); fi; }
+refute "land ignores the repo with no remote" "noremote (" "$out"
+check "declining skips the push" "skipped pushing" "$out"
+
+# Declining must genuinely not push.
+remote_head=$(git -C "$land_fix/up.git" rev-parse main 2>/dev/null)
+local_head=$(git -C "$land_fix/p/ahead" rev-parse HEAD 2>/dev/null)
+if [ "$remote_head" != "$local_head" ]; then
+    printf '  ✓ declining really left the remote untouched\n'; pass=$((pass+1))
+else
+    printf '  ✗ declining still pushed\n'; fail=$((fail+1))
+fi
+# Accepting must actually push.
+out=$(printf 'y\n' | PROJECTS_DIR="$land_fix/p" "$MINI" land 2>&1)
+check "accepting reports the push" "ahead pushed" "$out"
+remote_head=$(git -C "$land_fix/up.git" rev-parse main 2>/dev/null)
+local_head=$(git -C "$land_fix/p/ahead" rev-parse HEAD 2>/dev/null)
+if [ "$remote_head" = "$local_head" ]; then
+    printf '  ✓ the commit really reached the remote\n'; pass=$((pass+1))
+else
+    printf '  ✗ accepting did not push\n'; fail=$((fail+1))
+fi
+check "dirty repo still not pushed" "dirtyrepo — uncommitted changes" "$out"
+rm -rf "$land_fix"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

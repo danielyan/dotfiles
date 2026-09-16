@@ -172,7 +172,8 @@ works over ssh, in any shell, and on a machine that hasn't been configured yet.
 | `mini status` | Fast health summary; non-zero exit if anything is wrong |
 | `mini doctor` | Check every link and print the remedy for each failure |
 | `mini pair` | Wire Syncthing to the Mini, both ends, idempotently |
-| `mini preflight` | Prepare this machine to work offline |
+| `mini preflight` | Before going offline: pull everything down |
+| `mini land` | After coming back: push up, catch the Mini up |
 | `mini help` | Usage |
 
 `bin/mini` is a dispatcher; each subcommand is a file in `~/.local/lib/mini/`
@@ -218,27 +219,41 @@ without a reachable Mini — argument quoting, dispatch, and error handling.
 bash ~/.local/lib/mini/tests.sh
 ```
 
-## Before you go offline
+## Going offline and coming back
 
-```
-mini preflight
-```
+### Before: `mini preflight`
 
-It prepares the Air for working without the Mini:
+Fast-forwards every repo under `~/projects` with `--ff-only`, skipping any that
+are dirty or have no remote rather than risking a conflict. Triggers a Syncthing
+rescan so `~/.claude` is current. Pins the vault with `brctl download`, because
+iCloud evicts cold files and leaves a placeholder that fails to read offline.
 
-1. **Fast-forwards every repo** under `~/projects`. It uses `--ff-only`, and it
-   *skips* any repo with uncommitted changes or no remote rather than risking a
-   conflict or a silent stash. It reports what it skipped.
-2. **Triggers a Syncthing rescan** so `~/.claude` is current rather than waiting
-   for the next scan interval.
-3. **Pins the Obsidian vault** with `brctl download`. iCloud evicts files it
-   thinks are cold and leaves behind a placeholder that fails to read when you're
-   offline. This forces the real bytes local.
+Never commits, pushes, or touches a dirty tree. Exits non-zero if a pull failed.
 
-It exits non-zero if any pull failed, and never commits, pushes, or touches a
-dirty tree.
+### After: `mini land`
 
----
+Coming home inverts the model — for the duration of the trip, the *Air* was
+authoritative. Most of that reconciles itself: Syncthing catches `~/.claude` up,
+atuin syncs on your next command, iCloud handles the vault.
+
+Two things don't.
+
+**Git.** Nothing moves commits between the machines on its own, and the Mini
+pulls from the remote rather than from the Air. So the chain is commit → push →
+pull. `land` surveys every repo, shows you exactly what it would push and how
+many commits, asks once, pushes, then catches the Mini up over ssh in a single
+round trip. Dirty repos it reports and leaves alone.
+
+**The Mini's tmux sessions.** This is the one that's easy to miss, precisely
+because the model otherwise works so well: you run `mini`, land in the session
+you left days ago, and it *feels* like continuity. But those shells sit in
+working trees at the old commits, and anything long-running in them — a dev
+server, a file watcher — is executing pre-trip code. `land` lists any sessions
+that predate the commits it just pulled so you know what to restart. It won't
+kill them; it can't know what you left running deliberately.
+
+It also reports any Syncthing conflict files, which is where they show up if
+Claude happened to run on both machines.
 
 ## bootstrap
 

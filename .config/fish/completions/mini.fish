@@ -1,6 +1,6 @@
 # Completions only — the implementation is bash at ~/bin/mini.
 
-set -l cmds connect doctor preflight pair ls run shell status help
+set -l cmds connect doctor preflight land pair ls run shell status help
 
 complete -c mini -f
 complete -c mini -n "not __fish_seen_subcommand_from $cmds" -a connect   -d "attach to a tmux session on the Mini"
@@ -11,6 +11,7 @@ complete -c mini -n "not __fish_seen_subcommand_from $cmds" -a status    -d "qui
 complete -c mini -n "not __fish_seen_subcommand_from $cmds" -a doctor    -d "check every link, with remedies"
 complete -c mini -n "not __fish_seen_subcommand_from $cmds" -a preflight -d "prepare to work offline"
 complete -c mini -n "not __fish_seen_subcommand_from $cmds" -a pair      -d "wire Syncthing to the Mini"
+complete -c mini -n "not __fish_seen_subcommand_from $cmds" -a land      -d "reconcile after working offline"
 complete -c mini -n "not __fish_seen_subcommand_from $cmds" -a help      -d "usage"
 
 # Live session names, but only when the Mini is actually reachable — otherwise

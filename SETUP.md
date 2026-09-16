@@ -221,6 +221,7 @@ this doc.
 | `mini ls` | What's running, without attaching |
 | `mini run <cmd>` | One command remotely |
 | `mini status` | Fast health check |
-| `mini preflight` | Before going offline: pull all repos, rescan, pin vault |
+| `mini preflight` | Before going offline: pull everything down |
+| `mini land` | After coming back: push up, catch the Mini up |
 
 Full command reference and troubleshooting: `README.md`.

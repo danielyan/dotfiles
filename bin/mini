@@ -48,7 +48,7 @@ require_reachable() {
 export -f ok no maybe section die have is_server reachable require_reachable
 
 # --- dispatch -------------------------------------------------------------
-COMMANDS="connect doctor preflight pair ls run shell status"
+COMMANDS="connect doctor preflight land pair ls run shell status"
 
 usage() {
     cat <<USAGE
@@ -62,7 +62,8 @@ ${C_BOLD}mini${C_OFF} — control the always-on Mac Mini
   ${C_BOLD}mini status${C_OFF}             quick health summary
   ${C_BOLD}mini pair${C_OFF}               wire Syncthing to the Mini, both ends
   ${C_BOLD}mini doctor${C_OFF}             full check of every link, with remedies
-  ${C_BOLD}mini preflight${C_OFF}          prepare this machine to work offline
+  ${C_BOLD}mini preflight${C_OFF}          before going offline: pull everything down
+  ${C_BOLD}mini land${C_OFF}               after coming back: push up, catch the Mini up
   ${C_BOLD}mini help${C_OFF}               this
 
 Host is '$MINI_HOST'; override with \$MINI_HOST.
