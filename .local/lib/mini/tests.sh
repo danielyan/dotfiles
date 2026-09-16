@@ -114,7 +114,18 @@ cat > "$stub_dir/ssh" <<'STUB'
 for a in "$@"; do [ "$a" = "true" ] && exit 0; done
 exit 0
 STUB
-chmod +x "$stub_dir/ssh"
+# yadm stub. land's dotfiles branch is NOT scoped by PROJECTS_DIR — it always
+# targets the real repo — so without this the accept-path test pushes the user's
+# actual dotfiles to GitHub. Report zero commits ahead and refuse to push.
+cat > "$stub_dir/yadm" <<'STUB'
+#!/usr/bin/env bash
+case "$1" in
+    rev-list) echo 0 ;;
+    push)     echo "TEST BUG: land tried to push the real dotfiles repo" >&2; exit 1 ;;
+    *)        exit 0 ;;
+esac
+STUB
+chmod +x "$stub_dir/ssh" "$stub_dir/yadm"
 
 out=$(printf 'n\n' | PROJECTS_DIR="$land_fix/p" "$MINI" land 2>&1)
 check "land finds the repo that is ahead" "ahead (1 commit(s))" "$out"
@@ -143,6 +154,7 @@ else
     printf '  ✗ accepting did not push\n'; fail=$((fail+1))
 fi
 check "dirty repo still not pushed" "dirtyrepo — uncommitted changes" "$out"
+refute "never touches the real dotfiles repo" "TEST BUG" "$out"
 rm -rf "$land_fix"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
