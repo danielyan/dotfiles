@@ -129,6 +129,10 @@ That last row is the rule in action. Those files are in `~/.claude`, which is a
 Syncthing folder, but yadm already manages them — so Syncthing is explicitly told
 to keep its hands off.
 
+Note that `.stignore` is itself **not synced** — Syncthing treats it as an
+internal file. Both machines need their own copy, which is why it lives in yadm
+rather than being propagated by Syncthing itself.
+
 **Why session transcripts sync at all:** Claude Code keys its session directories
 on the absolute working directory, so `~/projects/magpie` becomes
 `-Users-ldan-projects-magpie`. Both machines use the username `ldan`, so those
@@ -186,16 +190,64 @@ Open `http://127.0.0.1:8384` on both machines.
 
 1. On the Mini: **Actions → Show ID**, copy the device ID.
 2. On the Air: **Add Remote Device**, paste it, accept.
-3. On the Mini: add a folder at `~/.claude`, share it with the Air.
-4. On the Air: accept the shared folder, point it at `~/.claude`.
+3. On the Air: **Add Folder**, settings below.
+4. On the Mini: accept the shared folder, point it at `~/.claude`.
 
-`~/.claude/.stignore` is already in place on both machines via yadm, so
-Syncthing picks it up automatically — caches, plugins and the yadm-owned files
-are excluded from the first scan onward.
+#### Order matters
 
-**Check the first sync before trusting it.** If `~/.claude/plugins` or
-`~/.claude/cache` start appearing on the other machine, the `.stignore` is not
-being read and you should stop and fix that before it mirrors gigabytes.
+> **`yadm clone` on the Mini before sharing the folder.**
+
+`.stignore` is on Syncthing's internal-files list, alongside `.stfolder` and
+`.stversions` — **it is not synced between devices.** Each machine needs its own
+copy, which yadm provides. Share the folder before the Mini has one and it will
+happily pull `plugins/`, `cache/`, and the yadm-owned config on first sync,
+which is precisely what the ignore file exists to prevent.
+
+Two more: add the folder on **one** device and accept the share on the other
+(creating it independently on both produces mismatched folder IDs), and because
+the Mini starts empty, **the Air is authoritative** — do this before real work
+happens on the Mini, or first sync becomes a merge of two divergent transcript
+sets and `history.jsonl` will conflict immediately.
+
+#### Folder settings
+
+**General**
+
+| Field | Value |
+|---|---|
+| Folder Label | `Claude State` |
+| Folder ID | `claude-state` — override the random default |
+| Folder Path | `~/.claude` |
+
+**File Versioning — the one that matters**
+
+Set **Staggered**, max age **30** days. Session transcripts are not
+reproducible: if a sync goes wrong there is no re-deriving them. Staggered keeps
+one version per 30 seconds for the first hour, hourly for a day, daily for 30
+days, then weekly. Versions go to `~/.claude/.stversions`, which is itself not
+synced, so it costs disk on one machine only.
+
+**Advanced**
+
+| Setting | Value | Why |
+|---|---|---|
+| Folder Type | Send & Receive | Default. Correct — this is bidirectional |
+| Watch for Changes | **On** | Default `true`; confirm it. Without it, changes wait for the hourly rescan |
+| Watch Delay | `10`s | Default |
+| Full Rescan Interval | `3600` | Default. Safety net behind the watcher |
+| Ignore Permissions | Off | Same user on both machines |
+| **Ignore Delete** | **Off** | Tempting as a safety net. Don't — stale files accumulate forever and genuine deletions stop propagating. Versioning is the correct net |
+| Max Conflicts | `10` | Default. **Never 0** — `history.jsonl` conflicts occasionally, and 0 means one machine's writes disappear silently |
+
+**Ignore Patterns tab** — this edits `.stignore` directly. It should already show
+the 36 lines yadm installed. If it's blank, do not save: you would wipe the file.
+
+#### Check the first sync before trusting it
+
+If `~/.claude/plugins` or `~/.claude/cache` start appearing on the other machine,
+the `.stignore` is not being read. Stop and fix that before it mirrors gigabytes.
+`mini doctor` verifies the folder is shared, the watcher is on, and versioning is
+configured.
 
 ### 5. Sync shell history
 

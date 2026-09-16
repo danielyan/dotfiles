@@ -119,6 +119,23 @@ mini_doctor() {
                           | grep -o '"deviceID"' | wc -l | tr -d ' ')
                 [ "${devices:-0}" -gt 1 ] && _p "syncthing paired with ${devices} device(s) incl. self" \
                     || _f "no peer device paired" "pair the other machine at $SYNCTHING_API"
+
+                # Settings that are wrong by default for this folder.
+                local folder
+                folder=$(curl -sf -m 5 -H "X-API-Key: $apikey" \
+                    "$SYNCTHING_API/rest/config/folders" 2>/dev/null \
+                    | tr '}' '\n' | grep -A200 '\.claude' | head -40)
+                if [ -n "$folder" ]; then
+                    echo "$folder" | grep -q '"fsWatcherEnabled":true' \
+                        && _p "filesystem watcher on (changes propagate in seconds)" \
+                        || _w "filesystem watcher off" "enable 'Watch for Changes' on the folder"
+                    if echo "$folder" | grep -q '"type":"none"'; then
+                        _w "no file versioning on ~/.claude" \
+                           "set Staggered, max age 30d — transcripts are not reproducible"
+                    else
+                        _p "file versioning enabled"
+                    fi
+                fi
             fi
         else
             _f "syncthing not running" "brew services start syncthing"
