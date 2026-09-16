@@ -66,5 +66,30 @@ check "connect fails with a useful message" "cannot reach" "$out"
 check_rc "connect exits 1 when unreachable" 1 "$rc"
 out=$("$MINI" ls 2>&1); rc=$?;       check_rc "ls exits 1 when unreachable" 1 "$rc"
 
+echo "pair: folder json"
+# add-json does NOT merge with defaults — every field omitted becomes a Go zero
+# value. These two silently break sync if left out, so assert them explicitly.
+MINI_HOST=mini MINI_SESSION=main HOME="$HOME" bash -c '
+  MINI_FOLDER_PATH=$HOME/.claude
+  . "$HOME/.local/lib/mini/pair.sh"
+  _folder_json PEERID MYID
+' > "$stub_dir/folder.json" 2>/dev/null
+
+json=$(cat "$stub_dir/folder.json")
+if python3 -c "import json,sys; json.load(open('$stub_dir/folder.json'))" 2>/dev/null; then
+    printf '  ✓ folder json is valid json\n'; pass=$((pass+1))
+else
+    printf '  ✗ folder json is not valid json\n'; fail=$((fail+1))
+fi
+val() { python3 -c "import json;d=json.load(open('$stub_dir/folder.json'));print(d$1)" 2>/dev/null; }
+check "maxConflicts is 10, not the zero value that discards writes" "10" "$(val "['maxConflicts']")"
+check "fsWatcherEnabled is true, not the zero value" "True" "$(val "['fsWatcherEnabled']")"
+check "versioning is staggered" "staggered" "$(val "['versioning']['type']")"
+check "maxAge is 30 days in seconds" "2592000" "$(val "['versioning']['params']['maxAge']")"
+check "ignoreDelete stays off" "False" "$(val "['ignoreDelete']")"
+check "folder is bidirectional" "sendreceive" "$(val "['type']")"
+check "both devices are shared" "2" "$(python3 -c "import json;d=json.load(open('$stub_dir/folder.json'));print(len(d['devices']))" 2>/dev/null)"
+check "peer device is included" "PEERID" "$json"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

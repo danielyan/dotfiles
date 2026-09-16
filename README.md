@@ -186,66 +186,51 @@ Tailscale admin console under DNS.
 
 ### 4. Pair Syncthing
 
-Open `http://127.0.0.1:8384` on both machines.
+```
+mini pair
+```
 
-1. On the Mini: **Actions → Show ID**, copy the device ID.
-2. On the Air: **Add Remote Device**, paste it, accept.
-3. On the Air: **Add Folder**, settings below.
-4. On the Mini: accept the shared folder, point it at `~/.claude`.
+That's it. Syncthing's setup is normally a GUI copy-paste ritual because each
+device needs the other's device ID — but we already have ssh to the Mini, so
+`mini pair` just asks it. It reads both device IDs, introduces the two machines
+to each other, and creates the `claude-state` folder on both ends with the right
+settings. Idempotent: re-running reports what already exists and changes nothing.
 
-#### Order matters
+It refuses to proceed unless `~/.claude/.stignore` exists on **both** machines,
+because `.stignore` is on Syncthing's internal-files list and is **not synced
+between devices**. Each machine needs its own copy, which yadm provides. Without
+it on the far end, first sync would pull `plugins/` and `cache/` — exactly what
+the ignore file exists to prevent. So on the Mini, `yadm clone` must happen
+before this step.
 
-> **`yadm clone` on the Mini before sharing the folder.**
+One ordering note it can't check for you: because the Mini starts empty, **the
+Air is authoritative**. Pair before doing real work on the Mini, or first sync
+becomes a merge of two divergent transcript sets and `history.jsonl` conflicts
+immediately.
 
-`.stignore` is on Syncthing's internal-files list, alongside `.stfolder` and
-`.stversions` — **it is not synced between devices.** Each machine needs its own
-copy, which yadm provides. Share the folder before the Mini has one and it will
-happily pull `plugins/`, `cache/`, and the yadm-owned config on first sync,
-which is precisely what the ignore file exists to prevent.
-
-Two more: add the folder on **one** device and accept the share on the other
-(creating it independently on both produces mismatched folder IDs), and because
-the Mini starts empty, **the Air is authoritative** — do this before real work
-happens on the Mini, or first sync becomes a merge of two divergent transcript
-sets and `history.jsonl` will conflict immediately.
-
-#### Folder settings
-
-**General**
-
-| Field | Value |
-|---|---|
-| Folder Label | `Claude State` |
-| Folder ID | `claude-state` — override the random default |
-| Folder Path | `~/.claude` |
-
-**File Versioning — the one that matters**
-
-Set **Staggered**, max age **30** days. Session transcripts are not
-reproducible: if a sync goes wrong there is no re-deriving them. Staggered keeps
-one version per 30 seconds for the first hour, hourly for a day, daily for 30
-days, then weekly. Versions go to `~/.claude/.stversions`, which is itself not
-synced, so it costs disk on one machine only.
-
-**Advanced**
+#### What it configures, and why
 
 | Setting | Value | Why |
 |---|---|---|
-| Folder Type | Send & Receive | Default. Correct — this is bidirectional |
-| Watch for Changes | **On** | Default `true`; confirm it. Without it, changes wait for the hourly rescan |
-| Watch Delay | `10`s | Default |
-| Full Rescan Interval | `3600` | Default. Safety net behind the watcher |
-| Ignore Permissions | Off | Same user on both machines |
-| **Ignore Delete** | **Off** | Tempting as a safety net. Don't — stale files accumulate forever and genuine deletions stop propagating. Versioning is the correct net |
-| Max Conflicts | `10` | Default. **Never 0** — `history.jsonl` conflicts occasionally, and 0 means one machine's writes disappear silently |
+| Folder ID / path | `claude-state` → `~/.claude` | |
+| Type | Send & Receive | Bidirectional |
+| **Versioning** | **Staggered, 30 days** | The one that matters. Transcripts are not reproducible — after a bad sync there is nothing to re-derive them from. Keeps one version per 30s for an hour, hourly for a day, daily for 30 days. Lands in `.stversions`, which is not synced |
+| Watch for Changes | On, 10s delay | Without it, changes wait for the hourly rescan |
+| Full rescan | 3600s | Safety net behind the watcher |
+| **Max Conflicts** | **10** | Never 0. `history.jsonl` conflicts occasionally, and 0 discards one machine's writes silently instead of leaving a copy |
+| **Ignore Delete** | **Off** | Looks like a safety net, isn't — stale files accumulate forever and genuine deletions stop propagating. Versioning is the correct net |
+| Ignore Permissions | Off | Same user both ends |
 
-**Ignore Patterns tab** — this edits `.stignore` directly. It should already show
-the 36 lines yadm installed. If it's blank, do not save: you would wipe the file.
+If you ever do this by hand in the GUI instead, note that `syncthing cli config
+folders add-json` does **not** merge with defaults — every omitted field becomes
+a Go zero value. Leaving out `maxConflicts` sets it to 0 and leaving out
+`fsWatcherEnabled` sets it to false, which is why `pair` writes the definition in
+full rather than patching.
 
 #### Check the first sync before trusting it
 
 If `~/.claude/plugins` or `~/.claude/cache` start appearing on the other machine,
-the `.stignore` is not being read. Stop and fix that before it mirrors gigabytes.
+the ignore file is not being read. Stop and fix that before it mirrors gigabytes.
 `mini doctor` verifies the folder is shared, the watcher is on, and versioning is
 configured.
 
@@ -291,6 +276,7 @@ works over ssh, in any shell, and on a machine that hasn't been configured yet.
 | `mini shell` | A plain login shell, no tmux |
 | `mini status` | Fast health summary; non-zero exit if anything is wrong |
 | `mini doctor` | Check every link and print the remedy for each failure |
+| `mini pair` | Wire Syncthing to the Mini, both ends, idempotently |
 | `mini preflight` | Prepare this machine to work offline |
 | `mini help` | Usage |
 

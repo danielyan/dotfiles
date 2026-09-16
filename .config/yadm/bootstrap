@@ -140,7 +140,9 @@ if command_exists syncthing; then
     else
         echo_ok "syncthing already running"
     fi
-    echo_warn "Pair devices and share ~/.claude at http://127.0.0.1:8384"
+    # Pairing needs the other machine reachable over ssh, which bootstrap
+    # cannot guarantee, so it is a separate explicit step.
+    echo_warn "Once Tailscale is up and the Mini is reachable: mini pair"
 fi
 
 ## Server mode (the always-on Mac Mini) ####################
