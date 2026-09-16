@@ -162,12 +162,32 @@ work on the Mini, or first sync merges two divergent transcript sets and
 
 ### 3.2 Shell history
 
+Optional, but this is the order — and atuin's own database is separate from
+fish's, so importing comes first or you sync an empty account.
+
+On the **Air** (which has the history):
+
 ```sh
-atuin register     # first machine; use `atuin login` on the second
+atuin import auto              # fish history → atuin's database
+atuin register -u <user> -e <email>
+atuin sync
+atuin key                      # SAVE THIS
+```
+
+> `atuin key` prints your encryption key. History is encrypted client-side, so
+> **the key is the only way to decrypt it on another machine** — the password
+> alone is not enough, and there is no recovery if you lose it. Put it in
+> Bitwarden now.
+
+On the **Mini** (new, no history worth keeping):
+
+```sh
+atuin login -u <user> -k <key>
 atuin sync
 ```
 
-Optional.
+`login` takes the key; `register` generates one. Don't run `import` on the Mini
+— there's nothing there worth importing, and sync will populate it.
 
 ### 3.3 Verify end to end
 

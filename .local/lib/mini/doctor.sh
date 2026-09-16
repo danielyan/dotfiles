@@ -150,8 +150,16 @@ mini_doctor() {
 
     section "Shell"
     if have atuin; then
-        [ -f "$HOME/.local/share/atuin/session" ] && _p "atuin logged in" \
-            || _w "atuin not logged in" "atuin register  (or atuin login), then atuin sync"
+        if [ -f "$HOME/.local/share/atuin/session" ]; then
+            _p "atuin logged in"
+        elif [ -s "$HOME/.local/share/atuin/history.db" ]; then
+            # History imported but no account: registering here is correct.
+            _w "atuin has local history but no account" \
+               "atuin register -u USER -e EMAIL, then atuin sync, then save 'atuin key'"
+        else
+            _w "atuin not set up" \
+               "on the machine with history: atuin import auto, then register; elsewhere: atuin login -k KEY"
+        fi
     fi
     [ -x "$HOME/bin/mini" ] && _p "mini installed" || _f "mini missing" "yadm checkout bin/mini"
 
