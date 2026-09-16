@@ -1,5 +1,16 @@
 # Global Instructions
 
+## Development
+
+When implementing a feature or fixing a bug in a software project, add tests for
+the new functionality as part of the same work — whenever tests make sense for
+what changed. Prefer testing pure, dependency-light logic; when a unit needs
+isolation, add a small seam (dependency injection, extract a helper) rather than
+skipping the test. Don't force tests onto code with no meaningful behavior to
+assert (trivial glue, pure UI layout) — validate that some other way (e.g.
+rendering a view to an image). Run the test suite and confirm it passes before
+considering the work done. This applies going forward, not just when asked.
+
 ## Magpie
 
 I have a personal knowledge base (Magpie — previously named "Hoarder") in my Obsidian vault at:
