@@ -41,8 +41,12 @@ Installs Homebrew + yadm, clones the dotfiles over `$HOME`, runs
 `yadm bootstrap --server`, which applies `pmset -a sleep 0 disksleep 0 powernap 1 autorestart 1` —
 never sleep, restart after a power cut — and pins the iCloud vault locally.
 
-Bootstrap will offer to generate an SSH key and add it to GitHub. Accept. Keys
-are per-machine so either can be revoked independently.
+Bootstrap will offer to generate an SSH key and register it with GitHub. Accept.
+Keys are per-machine so either can be revoked independently.
+
+If `gh` lacks the `admin:public_key` scope it will offer to request it. Should
+anything still fail, bootstrap exits non-zero and reprints the outstanding steps
+with the exact commands — re-running `yadm bootstrap` retries them.
 
 **Open a new terminal afterwards.** Bootstrap switches the default shell to fish
 and puts `~/bin` on the path; the shell that ran the installer has neither.

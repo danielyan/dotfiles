@@ -30,6 +30,12 @@ command_exists() { command -v "$1" &>/dev/null; }
 echo_ok()   { echo "[✓] $1"; }
 echo_err()  { echo "[✗] $1"; }
 echo_warn() { echo "[➞] $1"; }
+
+# Bootstrap deliberately runs without `set -e`: one failed step should not
+# abandon the rest of a provisioning run. The cost is that failures scroll past
+# unnoticed, so anything needing a human is collected and reprinted at the end.
+TODOS=()
+todo() { TODOS+=("$1"); echo_err "$1"; }
 ############################################################
 
 echo_ok "Bootstrap starting..."
@@ -120,17 +126,64 @@ if [ -f "$HOME/.ssh/config.mini" ] && ! grep -q "config.mini" "$HOME/.ssh/config
     echo_ok "Wired ~/.ssh/config.mini into ~/.ssh/config"
 fi
 
-# Keys are per-machine and never synced — generate one if this host lacks it.
+# Keys are per-machine and never synced. Generating the key and registering it
+# with GitHub are separate steps on purpose: registering can fail on its own
+# (missing gh scope, no network), and must still be retried by a later run even
+# though the key file now exists.
+HOSTLABEL="$(scutil --get LocalHostName 2>/dev/null || hostname)"
+
 if [ ! -f "$HOME/.ssh/id_ed25519" ]; then
     ask "Generate an SSH key for this machine? " && {
-        ssh-keygen -t ed25519 -C "$(whoami)@$(scutil --get LocalHostName 2>/dev/null || hostname)" \
-            -f "$HOME/.ssh/id_ed25519"
-        echo_ok "Add this key to GitHub:"
-        cat "$HOME/.ssh/id_ed25519.pub"
-        command_exists gh && ask "Add it via gh now? " && \
-            gh ssh-key add "$HOME/.ssh/id_ed25519.pub" -t "$(scutil --get LocalHostName 2>/dev/null || hostname)"
+        ssh-keygen -t ed25519 -C "$(whoami)@$HOSTLABEL" -f "$HOME/.ssh/id_ed25519" \
+            && echo_ok "Generated ~/.ssh/id_ed25519"
     }
 fi
+
+register_github_key() {
+    local pub="$HOME/.ssh/id_ed25519.pub"
+    [ -f "$pub" ] || return 0
+
+    local manual="gh ssh-key add $pub -t $HOSTLABEL"
+
+    if ! command_exists gh; then
+        todo "Add this machine's SSH key to GitHub: $manual"
+        return 0
+    fi
+
+    if ! gh auth status >/dev/null 2>&1; then
+        echo_warn "gh is not logged in"
+        ask "Log in to GitHub now? " && gh auth login
+        gh auth status >/dev/null 2>&1 || { todo "Log in with 'gh auth login', then: $manual"; return 0; }
+    fi
+
+    # Already registered? Compare the key body, which is stable across renames.
+    local body
+    body=$(awk '{print $2}' "$pub")
+    if gh ssh-key list 2>/dev/null | grep -qF "$body"; then
+        echo_ok "SSH key already registered with GitHub"
+        return 0
+    fi
+
+    # Uploading needs admin:public_key. A token without it fails with an API
+    # error that is easy to miss in a long provisioning run.
+    if ! gh auth status 2>&1 | grep -q 'admin:public_key'; then
+        echo_warn "gh token lacks the admin:public_key scope"
+        if ask "Request it now? "; then
+            gh auth refresh -h github.com -s admin:public_key \
+                || { todo "Grant the scope, then: $manual"; return 0; }
+        else
+            todo "Grant the scope with 'gh auth refresh -h github.com -s admin:public_key', then: $manual"
+            return 0
+        fi
+    fi
+
+    if gh ssh-key add "$pub" -t "$HOSTLABEL"; then
+        echo_ok "Registered SSH key with GitHub as '$HOSTLABEL'"
+    else
+        todo "Registering the SSH key failed. Retry with: $manual"
+    fi
+}
+register_github_key
 
 ## Syncthing ###############################################
 if command_exists syncthing; then
@@ -164,6 +217,15 @@ if [ "$SERVER_MODE" -eq 1 ]; then
     fi
     echo_warn "Manually enable: Settings > General > Sharing > Screen Sharing"
     echo_warn "Manually enable: Settings > Users & Groups > Automatic login"
+fi
+
+if [ "${#TODOS[@]}" -gt 0 ]; then
+    echo
+    echo_warn "Bootstrap finished, but ${#TODOS[@]} step(s) need you:"
+    for t in "${TODOS[@]}"; do echo "    • $t"; done
+    echo
+    echo_warn "Re-running 'yadm bootstrap' will retry them."
+    exit 1
 fi
 
 echo_ok "Bootstrap finished."
