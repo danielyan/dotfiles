@@ -60,8 +60,8 @@ From the Air (or the Mini itself), type:
 mini
 ```
 
-or hit `cmd+shift+m` in Ghostty. That's `.config/fish/functions/mini.fish`, and
-it runs roughly:
+or hit `cmd+shift+m` in Ghostty. That's `bin/mini`, a plain bash script, which
+for the bare form runs:
 
 ```
 mosh mini -- tmux new -A -s main
@@ -71,8 +71,8 @@ Three things are happening:
 
 - **`mosh`** instead of `ssh` — mosh survives your laptop lid closing, your IP
   changing when you move between wifi and cellular, and multi-hour suspends. An
-  ssh session dies in all three cases. If mosh isn't installed, the function
-  falls back to `ssh -t`.
+  ssh session dies in all three cases. If mosh isn't installed, it falls back to
+  `ssh -t`.
 - **`tmux new -A -s main`** — `-A` means *attach if the session exists, create it
   if it doesn't*. So the first call of the day creates `main`; every call after
   that reattaches to the same one.
@@ -81,21 +81,8 @@ Three things are happening:
 
 The consequence worth internalising: **you never "move" work between machines.**
 A build running on the Mini keeps running while you close the Air and drive home.
-You sit down at the Mini's monitor, run `tmux attach -t main`, and you're looking
-at the same session — same scrollback, same running processes.
-
-Other things the function does:
-
-```
-mini            attach to (or create) the 'main' session
-mini magpie     a separate session named 'magpie', for a second workstream
-mini -l         list what's running on the Mini without attaching
-mini -s         a plain shell, no tmux
-```
-
-It checks reachability first with a 5-second timeout, so when Tailscale is down
-you get *"cannot reach 'mini' — is Tailscale up and the Mini awake?"* instead of
-a 30-second TCP hang.
+You sit down at the Mini's monitor, run `mini`, and you're looking at the same
+session — same scrollback, same running processes.
 
 ---
 
@@ -154,7 +141,7 @@ it's the single most important thing to get right during Setup Assistant.
 ## Preparing the Air to work with the Mini
 
 Do these in order. The Mini must be set up first — it's the thing being
-connected *to*. Run `doctor` after each step to see what's still outstanding.
+connected *to*. Run `mini doctor` after each step to see what's still outstanding.
 
 ### 1. Get the packages
 
@@ -223,7 +210,7 @@ Air's history search this afternoon.
 ### 6. Verify the whole chain
 
 ```
-doctor
+mini doctor
 ```
 
 Everything should be green. Then the real test:
@@ -238,10 +225,42 @@ the entire model working.
 
 ---
 
-## doctor
+## The `mini` command
 
-`bin/doctor` checks every link in the chain and prints the exact remedy for
-anything broken. It is read-only and safe to run at any time.
+Everything to do with the Mini is one command. It is **bash, not fish** — so it
+works over ssh, in any shell, and on a machine that hasn't been configured yet.
+
+| Command | Does |
+|---|---|
+| `mini` | Attach to the `main` session — the 95% case |
+| `mini connect <name>` | Attach to, or create, a named session |
+| `mini ls` | List sessions without attaching |
+| `mini run <cmd>` | Run one command remotely and come straight back |
+| `mini shell` | A plain login shell, no tmux |
+| `mini status` | Fast health summary; non-zero exit if anything is wrong |
+| `mini doctor` | Check every link and print the remedy for each failure |
+| `mini preflight` | Prepare this machine to work offline |
+| `mini help` | Usage |
+
+`bin/mini` is a dispatcher; each subcommand is a file in `~/.local/lib/mini/`
+defining a `mini_<name>` function. Adding a subcommand means adding a file.
+
+Two behaviours worth knowing:
+
+- **It knows which machine it's on.** On the Mini, `mini connect` attaches to a
+  local tmux session rather than ssh-ing to itself, and `mini run` just runs the
+  command. `doctor` checks the Mini for live sessions and iCloud eviction, and
+  the Air for whether it can reach the Mini at all.
+- **An unrecognised word is an error, not a session name.** `mini magpie` tells
+  you to use `mini connect magpie` rather than silently creating a session named
+  `magpie` from a typo.
+
+`$MINI_HOST` overrides the target host, `$MINI_SESSION` the default session.
+
+### mini doctor
+
+Checks every link and prints the exact remedy for anything broken. Read-only and
+safe to run at any time; exits non-zero if any check failed.
 
 ```
 Packages
@@ -252,25 +271,27 @@ Reaching the Mini
       → check Tailscale on both ends; is the Mini awake?
 ```
 
-It detects which machine it's on (via `pmset`) and checks accordingly: on the
-Mini it looks at tmux sessions and whether iCloud has evicted the vault; on the
-Air it checks reachability, that tmux and mosh exist on the far end, and that
-Syncthing is actually paired.
-
 The check worth knowing about is **username match**. It compares `whoami` on
 both machines and fails loudly if they differ, because that's the one
 misconfiguration that breaks Claude session continuity silently — files sync
 fine, they just land in a directory the other machine never reads.
 
-Exit code is non-zero if any check failed, so it works in a script.
+### Tests
+
+`.local/lib/mini/tests.sh` stubs ssh and mosh so the remote paths can be checked
+without a reachable Mini — argument quoting, dispatch, and error handling.
+
+```
+bash ~/.local/lib/mini/tests.sh
+```
 
 ## Before you go offline
 
 ```
-preflight
+mini preflight
 ```
 
-`bin/preflight` prepares the Air for working without the Mini:
+It prepares the Air for working without the Mini:
 
 1. **Fast-forwards every repo** under `~/projects`. It uses `--ff-only`, and it
    *skips* any repo with uncommitted changes or no remote rather than risking a
@@ -330,14 +351,14 @@ System Settings; there's no reliable scriptable equivalent.
 
 ## When something breaks
 
-Start with `doctor` — it checks every link and names the fix. The cases below
+Start with `mini doctor` — it checks every link and names the fix. The cases below
 are the ones it can't resolve for you.
 
 **`mini` says it can't reach the host.** Check `tailscale status` on both ends.
 If the Mini is up but unreachable it usually rebooted and hasn't logged in —
 Screen Share in and check.
 
-**A tmux session vanished.** `mini -l` lists what's actually running. Sessions
+**A tmux session vanished.** `mini ls` lists what's actually running. Sessions
 survive detach and network loss, but not a Mini reboot. That's what `autorestart`
 plus a login item mitigates, not eliminates.
 
@@ -345,7 +366,7 @@ plus a login item mitigates, not eliminates.
 on both machines at once — `history.jsonl` is append-only per machine and has no
 merge semantics. Rare under remote-first. Keep the larger file, delete the other.
 
-**`preflight` skipped a repo.** By design: it won't pull into a dirty tree.
+**`mini preflight` skipped a repo.** By design: it won't pull into a dirty tree.
 Commit or stash, then re-run.
 
 **Claude can't find an old session on the other machine.** Check that
@@ -359,15 +380,15 @@ never line up.
 
 ```
 .config/fish/            shell config, prompt, abbreviations
-.config/fish/functions/  mini.fish — connect to the Mini
+.config/fish/completions/ mini.fish — completions only, no logic
 .config/tmux/            tmux.conf — long scrollback, detach-safe
 .config/ghostty/         terminal config, cmd+shift+m keybind
 .config/yadm/bootstrap   provisioning, idempotent, --server mode
 .config/vscode/          settings + extension list
 .claude/                 CLAUDE.md, settings.json, skills, .stignore
 .ssh/config.mini         Mini host config (no key material)
-bin/doctor               verify the whole chain, print remedies
-bin/preflight            prepare the Air for offline work
+bin/mini                 the one command: connect, doctor, preflight, ...
+.local/lib/mini/         its subcommands, one file each, plus tests.sh
 bin/mac-setup            one-liner bootstrap for a fresh Mac
 bin/mac-defaults         macOS system defaults
 Brewfile                 every package, declarative

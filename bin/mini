@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# mini — control the always-on Mac Mini from anywhere.
+#
+# A shell-agnostic dispatcher: subcommands live in ~/.local/lib/mini/<name>.sh,
+# each defining a `mini_<name>` function. Deliberately plain bash so it works
+# over ssh, in any shell, and on a machine that has not been set up yet.
+#
+# See ~/README.md and vault: projects/project-machine-continuity.md
+
+set -uo pipefail
+
+MINI_HOST="${MINI_HOST:-mini}"
+MINI_LIB="${MINI_LIB:-$HOME/.local/lib/mini}"
+MINI_SESSION="${MINI_SESSION:-main}"
+SYNCTHING_API="${SYNCTHING_API:-http://127.0.0.1:8384}"
+export MINI_HOST MINI_LIB MINI_SESSION SYNCTHING_API
+
+# --- output ---------------------------------------------------------------
+if [ -t 1 ]; then
+    C_OK=$'\033[32m'; C_NO=$'\033[31m'; C_WARN=$'\033[33m'
+    C_BOLD=$'\033[1m'; C_DIM=$'\033[2m'; C_OFF=$'\033[0m'
+else
+    C_OK=''; C_NO=''; C_WARN=''; C_BOLD=''; C_DIM=''; C_OFF=''
+fi
+
+ok()      { printf '  %s✓%s %s\n' "$C_OK" "$C_OFF" "$1"; }
+no()      { printf '  %s✗%s %s\n' "$C_NO" "$C_OFF" "$1"
+            [ $# -gt 1 ] && printf '      %s→ %s%s\n' "$C_DIM" "$2" "$C_OFF"; return 0; }
+maybe()   { printf '  %s➞%s %s\n' "$C_WARN" "$C_OFF" "$1"
+            [ $# -gt 1 ] && printf '      %s→ %s%s\n' "$C_DIM" "$2" "$C_OFF"; return 0; }
+section() { printf '\n%s%s%s\n' "$C_BOLD" "$1" "$C_OFF"; }
+die()     { printf '%smini:%s %s\n' "$C_NO" "$C_OFF" "$1" >&2; exit 1; }
+
+have()    { command -v "$1" >/dev/null 2>&1; }
+
+# Is this machine the always-on one? Nothing to connect to if so.
+is_server() { [ "$(pmset -g custom 2>/dev/null | awk '/sleep/{print $2; exit}')" = "0" ]; }
+
+# Reachability with a short timeout, so failures are fast and legible rather
+# than a 30-second TCP hang.
+reachable() { ssh -o ConnectTimeout=5 -o BatchMode=yes "$MINI_HOST" true 2>/dev/null; }
+
+require_reachable() {
+    reachable && return 0
+    die "cannot reach '$MINI_HOST' — is Tailscale up and the Mini awake?"
+}
+
+export -f ok no maybe section die have is_server reachable require_reachable
+
+# --- dispatch -------------------------------------------------------------
+COMMANDS="connect doctor preflight ls run shell status"
+
+usage() {
+    cat <<USAGE
+${C_BOLD}mini${C_OFF} — control the always-on Mac Mini
+
+  ${C_BOLD}mini${C_OFF}                    attach to the '$MINI_SESSION' session (same as connect)
+  ${C_BOLD}mini connect${C_OFF} [name]     attach to, or create, a named tmux session
+  ${C_BOLD}mini ls${C_OFF}                 list sessions without attaching
+  ${C_BOLD}mini run${C_OFF} <command>      run one command remotely, no session
+  ${C_BOLD}mini shell${C_OFF}              a plain login shell, no tmux
+  ${C_BOLD}mini status${C_OFF}             quick health summary
+  ${C_BOLD}mini doctor${C_OFF}             full check of every link, with remedies
+  ${C_BOLD}mini preflight${C_OFF}          prepare this machine to work offline
+  ${C_BOLD}mini help${C_OFF}               this
+
+Host is '$MINI_HOST'; override with \$MINI_HOST.
+USAGE
+}
+
+cmd="${1:-connect}"
+[ $# -gt 0 ] && shift
+
+case "$cmd" in
+    -h|--help|help) usage; exit 0 ;;
+esac
+
+if ! printf '%s\n' $COMMANDS | grep -qx "$cmd"; then
+    printf '%smini:%s unknown command '\''%s'\''\n' "$C_NO" "$C_OFF" "$cmd" >&2
+    printf "      %sto attach to a named session, use: mini connect %s%s\n" \
+        "$C_DIM" "$cmd" "$C_OFF" >&2
+    printf '      %scommands: %s%s\n' "$C_DIM" "$COMMANDS" "$C_OFF" >&2
+    exit 1
+fi
+
+[ -f "$MINI_LIB/$cmd.sh" ] || die "missing $MINI_LIB/$cmd.sh (try: yadm pull)"
+# shellcheck source=/dev/null
+. "$MINI_LIB/$cmd.sh"
+"mini_$cmd" "$@"
