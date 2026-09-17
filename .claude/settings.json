@@ -13,7 +13,6 @@
       "Bash(git restore:*)"
     ]
   },
-  "model": "opus",
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -71,5 +70,7 @@
   },
   "effortLevel": "medium",
   "tui": "fullscreen",
-  "skipDangerousModePermissionPrompt": true
+  "skipDangerousModePermissionPrompt": true,
+  "agentPushNotifEnabled": true,
+  "model": "opus"
 }
