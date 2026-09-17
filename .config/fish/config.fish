@@ -1,5 +1,7 @@
 if status is-interactive
-    # Commands to run in interactive sessions can go here
+    # gpg needs to know which terminal to ask for a passphrase in, or
+    # `yadm encrypt` dies with "Inappropriate ioctl for device".
+    set -gx GPG_TTY (tty)
 end
 
 fish_add_path /opt/homebrew/bin
