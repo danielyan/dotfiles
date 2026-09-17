@@ -63,6 +63,28 @@ brew upgrade
 echo_ok "Installing apps from Brewfile..."
 brew bundle --file="$HOME/Brewfile"
 
+## Secrets #################################################
+# Plaintext secrets live only in yadm's encrypted archive; see
+# .config/yadm/encrypt for the list. Decrypting prompts for the passphrase.
+if [ -f "$HOME/.local/share/yadm/archive" ]; then
+    if [ ! -f "$HOME/.config/magpie/api-keys.env" ]; then
+        echo_ok "Decrypting yadm archive..."
+        yadm decrypt || echo_warn "yadm decrypt failed; secrets stay missing"
+    else
+        echo_ok "Secrets already decrypted"
+    fi
+else
+    echo_warn "No yadm archive found; skipping secrets"
+fi
+
+# MCP servers carry tokens, so they are stored apart from ~/.claude.json
+# (which also holds Claude Code runtime state) and merged back in here.
+MCP_SRC="$HOME/.config/claude/mcp-servers.json"
+MCP_MERGE="$HOME/.local/lib/yadm/claude-mcp-merge.py"
+if [ -f "$MCP_SRC" ] && [ -x "$MCP_MERGE" ]; then
+    echo_ok "Syncing Claude MCP servers: $("$MCP_MERGE" "$MCP_SRC" "$HOME/.claude.json")"
+fi
+
 ## Shell ###################################################
 FISH_PATH="$(command -v fish || echo /opt/homebrew/bin/fish)"
 
@@ -101,13 +123,18 @@ fi
 VSCODE_USER_DIR="$HOME/Library/Application Support/Code/User"
 if [ -d "$(dirname "$VSCODE_USER_DIR")" ]; then
     mkdir -p "$VSCODE_USER_DIR"
-    if [ ! -L "$VSCODE_USER_DIR/settings.json" ]; then
-        # -f so re-running replaces a stale regular file rather than failing.
-        ln -sf "$HOME/.config/vscode/settings.json" "$VSCODE_USER_DIR/settings.json"
-        echo_ok "Linked VSCode settings"
-    else
-        echo_ok "VSCode settings already linked"
-    fi
+    # mcp.json holds an API token, so it is decrypted from the archive rather
+    # than tracked in the clear; link it only once it exists.
+    for f in settings.json mcp.json; do
+        [ -f "$HOME/.config/vscode/$f" ] || continue
+        if [ ! -L "$VSCODE_USER_DIR/$f" ]; then
+            # -f so re-running replaces a stale regular file rather than failing.
+            ln -sf "$HOME/.config/vscode/$f" "$VSCODE_USER_DIR/$f"
+            echo_ok "Linked VSCode $f"
+        else
+            echo_ok "VSCode $f already linked"
+        fi
+    done
 fi
 
 if command_exists code && [ -f "$HOME/.config/vscode/extensions" ]; then

@@ -102,6 +102,26 @@ commit these deliberately, and `yadm pull` on the other machine picks them up.
 The repo is **public**, so anything secret must go through `yadm encrypt`, which
 stores files encrypted inside the repo and unlocks them with a passphrase.
 
+#### Secrets
+
+`.config/yadm/encrypt` lists the paths that hold credentials. `yadm encrypt`
+bundles them into `.local/share/yadm/archive` (committed, GPG-symmetric, one
+passphrase); `yadm decrypt` restores them. The plaintext files themselves are
+never tracked.
+
+| Path | Holds |
+|---|---|
+| `.config/magpie/api-keys.env` | OMDB and TMDB keys for vault enrichment |
+| `.config/claude/mcp-servers.json` | Claude Code MCP servers and their tokens |
+| `.config/vscode/mcp.json` | VSCode MCP server token (symlinked into place) |
+| `projects/.env` | project-local secrets |
+
+Claude's MCP definitions are kept apart from `~/.claude.json` because that file
+also holds Claude Code's own runtime state, which Syncthing owns. `bootstrap`
+merges them back in with `.local/lib/yadm/claude-mcp-merge.py` (tests alongside
+it). Re-run `yadm encrypt` and commit whenever a secret changes; it rewrites the
+whole archive.
+
 ### git owns code
 
 Repos under `~/projects` are normal git repos with normal remotes. Under the

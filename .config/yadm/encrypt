@@ -1,0 +1,6 @@
+# Files encrypted into .local/share/yadm/archive by `yadm encrypt`.
+# The archive is committed; these plaintext paths never are.
+.config/magpie/api-keys.env
+.config/claude/mcp-servers.json
+.config/vscode/mcp.json
+projects/.env

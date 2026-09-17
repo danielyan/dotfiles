@@ -18,6 +18,7 @@ brew "mosh"          # survives lid-close and network changes
 brew "syncthing"     # ~/.claude runtime state between machines
 brew "atuin"         # shell history synced across machines
 brew "jq"
+brew "gnupg"     # yadm encrypt/decrypt
 
 cask "font-fira-code"
 cask "font-iosevka"
