@@ -52,7 +52,23 @@ When you implement a feature, fix a bug, or complete an item from a project note
 
 After completing a backlog item, re-present the remaining backlog items so the user can pick the next one without having to ask again.
 
-If the current session's working directory is not the project's `path` (e.g., I'm in `~/projects/magpie` and ask to work on Fresco), say so up front and suggest starting a fresh session there (`cd <path> && claude`, in a new tmux window when inside tmux) so sessions stay one-project-per-folder — Claude Code keys session history by working directory, so this keeps `claude -c` and `--resume` scoped to the project on both machines. Offer it once, then proceed if I choose to stay.
+If the current session's working directory is not the project's `path` (e.g., I'm in `~/projects/magpie` and ask to work on Fresco), suggest starting a fresh session there so sessions stay one-project-per-folder — Claude Code keys session history by working directory, so this keeps `claude -c` and `--resume` scoped to the project on both machines. Before doing any work, show the suggestion boxed in an ASCII border, then stop and wait for my reply:
+
+```
+╔══════════════════════════════════════════════════════════════╗
+║  ⚠  WRONG FOLDER FOR THIS PROJECT                            ║
+║                                                              ║
+║  This session is in:  ~/projects/magpie                      ║
+║  Fresco lives in:     ~/projects/fresco                      ║
+║                                                              ║
+║  Start a fresh session there (new tmux window if in tmux):   ║
+║    cd ~/projects/fresco && claude                            ║
+║                                                              ║
+║  Reply "stay" to continue here instead.                      ║
+╚══════════════════════════════════════════════════════════════╝
+```
+
+Don't proceed until I acknowledge. Ask once per project per session; if I say stay, carry on without asking again.
 
 ### Processing
 
