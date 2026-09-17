@@ -21,7 +21,15 @@ done 2>/dev/null &
 ###############################################################################
 
 # Enable Dark Mode
-# Disable Click on Desktop thing
+osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
+
+# Disable Click on Desktop thing (clicking wallpaper hides all windows)
+defaults write com.apple.WindowManager EnableStandardClickToShowDesktop -bool false
+
+# Disable macOS window tiling; Rectangle handles it
+defaults write com.apple.WindowManager EnableTilingByEdgeDrag -bool false
+defaults write com.apple.WindowManager EnableTopTilingByEdgeDrag -bool false
+defaults write com.apple.WindowManager EnableTilingOptionAccelerator -bool false
 
 
 # Disable the sound effects on boot
@@ -82,6 +90,12 @@ defaults write com.apple.BluetoothAudioAgent "Apple Bitpool Min (editable)" -int
 # Enable full keyboard access for all controls
 # (e.g. enable Tab in modal dialogs)
 defaults write NSGlobalDomain AppleKeyboardUIMode -int 3
+
+# Trackpad: enable tap to click for this user and for the login screen
+defaults write com.apple.AppleMultitouchTrackpad Clicking -bool true
+defaults write com.apple.driver.AppleBluetoothMultitouch.trackpad Clicking -bool true
+defaults -currentHost write NSGlobalDomain com.apple.mouse.tapBehavior -int 1
+defaults write NSGlobalDomain com.apple.mouse.tapBehavior -int 1
 
 ## Disable press-and-hold for keys in favor of key repeat
 #defaults write NSGlobalDomain ApplePressAndHoldEnabled -bool false
@@ -337,6 +351,7 @@ for app in "Activity Monitor" \
 	"cfprefsd" \
 	"Contacts" \
 	"Dock" \
+	"WindowManager" \
 	"Finder" \
 	"Google Chrome" \
 	"Mail" \
