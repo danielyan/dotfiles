@@ -49,12 +49,6 @@ for dir in ~/projects/*/
     function $name --inherit-variable dir; cd $dir; end
 end
 
-#------ claude wrapper
-function claude --wraps claude
-    set -l project_name (basename $PWD)
-    command claude --name $project_name $argv
-end
-
 #------ knowledge base
 alias kb 'claude --dangerously-skip-permissions --allowedTools "Read" "Glob" "Grep" "Bash(ls *)" "Skill" --append-system-prompt "Read-only knowledge base mode. Never create, edit, or delete files."'
 alias kbq 'claude -p --dangerously-skip-permissions --allowedTools "Read" "Glob" "Grep" "Bash(ls *)" "Skill" --append-system-prompt "Read-only knowledge base mode. Never create, edit, or delete files."'
