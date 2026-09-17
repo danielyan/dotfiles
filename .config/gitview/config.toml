@@ -1,0 +1,76 @@
+# gitlt configuration.
+#
+# Every setting below is commented out and shows its default, so this file
+# changes nothing as it stands. Uncomment a line to override it.
+#
+# Read once at startup — restart gitlt after editing. Keys gitlt does not
+# recognise are ignored, so a file written for a later version still works
+# here. A file with a mistake in it is reported and the defaults used, rather
+# than refusing to start.
+
+[ui]
+
+# Which palette to use: "dark" or "light".
+#
+# Panes inherit the terminal's own background rather than painting one, so this
+# should match the terminal you are in — a light palette on a dark terminal is
+# dark text on black. An unrecognised name falls back to "dark" and says so.
+#
+# NO_COLOR=1 in the environment turns colour off entirely, whatever is set here.
+theme = "Vercel"
+
+# Width of the left column (Changes and Log), as a percentage of the screen.
+# Values outside 15–85 are pulled into that range.
+# left_width_pct = 40
+
+# Height of the Changes pane, as a percentage of the left column. The Log pane
+# takes what is left. Values outside 10–90 are pulled into that range.
+# changes_height_pct = 35
+
+# Report mouse events to gitlt: the wheel scrolls the pane under the pointer,
+# and clicking focuses a pane and selects a row.
+#
+# The cost is that click-drag no longer selects text, since those events come to
+# gitlt instead. Most terminals still offer their own selection with a modifier
+# held — Option on macOS, Shift elsewhere. `gitlt --no-mouse` turns this off for
+# a single run without changing it here.
+# mouse = true
+
+[log]
+
+# Start the log on every reference — branches, remote-tracking branches and
+# tags — rather than only the branch you are on. All-refs is what makes the
+# commit graph worth drawing.
+#
+# This is only the starting point: pressing `a` toggles it, and that choice is
+# remembered in the session file, which then outranks this setting.
+# all_refs = true
+
+# Commits fetched per page. History is paged in as you scroll rather than loaded
+# whole, and this is how much arrives at a time. Values outside 20–5000 are
+# pulled into that range.
+# page_size = 200
+
+[diff]
+
+# Highlight the words that changed within a changed line, not just the line.
+# Toggled per-session with `w`.
+# word_diff = true
+
+# Unchanged lines shown either side of a change. Adjusted per-session with
+# `+` and `-`. Capped at 50.
+# context_lines = 3
+
+# Columns a tab advances to, measured from the start of the line — which is
+# where an editor measures a tab stop. Values outside 1–16 are pulled into
+# that range.
+# tab_width = 4
+
+[repos]
+
+# Where the new-tab picker (Ctrl+T) looks for repositories, alongside the ones
+# you have opened recently. Scanned one level deep: a directory is offered if it
+# is a repository, and so is each of its immediate children. A leading ~ is
+# expanded, and a root that does not exist is skipped rather than complained
+# about.
+# scan_roots = ["~/projects"]
