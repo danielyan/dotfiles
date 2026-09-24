@@ -11,6 +11,7 @@ brew "uv"
 brew "xcodegen"
 brew "platformio"
 brew "mas"
+brew "utiluti"         # default apps for file types; see bin/mac-default-apps
 
 # --- machine continuity: see vault projects/project-machine-continuity.md ---
 brew "tmux"          # persistent sessions on the Mini (the continuity mechanism)

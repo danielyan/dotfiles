@@ -119,6 +119,25 @@ if [ -x "$HOME/bin/mac-defaults" ]; then
     ask "Set up macOS defaults? " && "$HOME/bin/mac-defaults"
 fi
 
+## Default applications ##################################
+# Not part of mac-defaults: those are `defaults write` calls, while file-type
+# bindings live in the LaunchServices database. Since macOS 26.4 each change
+# needs a click on a confirmation dialog, so list what would change and ask
+# first; on an already-configured Mac the check is silent and nothing prompts.
+if [ -x "$HOME/bin/mac-default-apps" ]; then
+    "$HOME/bin/mac-default-apps" --check
+    case $? in
+        0) ;;
+        2) if ask "Apply these? macOS asks you to confirm each one: "; then
+               "$HOME/bin/mac-default-apps" \
+                   || todo "Some default apps were not set. Retry with: mac-default-apps"
+           else
+               todo "Default apps not applied. Run: mac-default-apps"
+           fi ;;
+        *) todo "Could not check default apps. Run: mac-default-apps --check" ;;
+    esac
+fi
+
 ## VSCode ##################################################
 VSCODE_USER_DIR="$HOME/Library/Application Support/Code/User"
 if [ -d "$(dirname "$VSCODE_USER_DIR")" ]; then

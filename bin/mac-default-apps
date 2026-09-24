@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# Bind file types and URL schemes to applications — the scriptable form of
+# Finder's "Get Info > Open with > Change All...".
+#
+#   mac-default-apps           apply the bindings below
+#   mac-default-apps --check   list bindings that differ; change nothing
+#
+# Since macOS 26.4 every default-app change shows a confirmation dialog, so
+# applying is interactive: one click per binding that actually changes. Each
+# binding is compared first, so a re-run on a configured Mac is silent.
+#
+# utiluti is used rather than duti: duti calls the deprecated LaunchServices
+# API, which cannot present that dialog and silently does nothing while
+# exiting 0. For the same reason every change is read back, never trusted.
+#
+# Exit status: 0 all bound, 1 failure, 2 (--check only) changes pending.
+
+set -uo pipefail
+
+CHECK_ONLY=0
+FAILURES=0
+PENDING=0
+
+echo_ok()   { echo "[✓] $1"; }
+echo_err()  { echo "[✗] $1"; }
+echo_warn() { echo "[➞] $1"; }
+
+lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+# Emits "KIND BUNDLE_ID IDENTIFIER" lines; KIND is `type` (a UTI) or `url`
+# (a scheme). UTIs rather than extensions: an extension resolves to a UTI
+# anyway, and one UTI can cover several extensions.
+bindings() {
+    local iina=com.colliderli.iina keka=com.aone.keka
+    local code=com.microsoft.VSCode brave=com.brave.Browser
+    local u
+
+    # Video. macOS has no system UTI for mkv/flv/ts, so IINA exports its own
+    # (io.iina.*) and those are what .mkv and friends actually resolve to.
+    for u in public.mpeg-4 com.apple.quicktime-movie com.apple.m4v-video \
+             io.iina.mkv io.iina.webm org.webmproject.webm public.avi \
+             io.iina.flash io.iina.mpeg-stream io.iina.ogg-video \
+             public.mpeg public.3gpp com.microsoft.windows-media-wmv \
+             public.movie; do
+        echo "type $iina $u"
+    done
+
+    # Audio. Takes mp3/m4a away from Music.app, which is the intent: streaming
+    # lives in Spotify, so local files are one-off playback, not imports.
+    for u in org.xiph.flac com.microsoft.waveform-audio public.aiff-audio \
+             public.aifc-audio public.mp3 public.mpeg-4-audio \
+             com.apple.m4a-audio public.audio; do
+        echo "type $iina $u"
+    done
+
+    # Archives
+    for u in public.zip-archive public.tar-archive org.gnu.gnu-tar-archive \
+             org.gnu.gnu-zip-archive public.bzip2-archive \
+             org.7-zip.7-zip-archive com.rarlab.rar-archive; do
+        echo "type $keka $u"
+    done
+
+    # Code and text. Scripts included, so double-clicking a .sh opens it for
+    # editing rather than running it in Ghostty. Markdown too: the vault opens
+    # through Obsidian regardless, so a loose .md is usually a repo README.
+    for u in public.plain-text public.json public.yaml public.xml \
+             public.comma-separated-values-text public.log \
+             public.source-code public.python-script \
+             com.netscape.javascript-source public.c-source public.c-header \
+             public.ruby-script net.daringfireball.markdown \
+             public.shell-script public.perl-script; do
+        echo "type $code $u"
+    done
+
+    echo "type $brave public.html"
+    echo "url $brave http"
+    echo "url $brave https"
+}
+
+# stdin closed: main feeds the bindings on stdin, which utiluti must not eat.
+current_handler() { utiluti "$1" get "$2" --bundle-id </dev/null 2>/dev/null; }
+
+# apply_binding KIND BUNDLE_ID IDENTIFIER
+apply_binding() {
+    local kind="$1" bundle="$2" id="$3" current
+    current=$(current_handler "$kind" "$id")
+
+    # LaunchServices may store bundle ids lower-cased (com.brave.browser).
+    [ "$(lower "$current")" = "$(lower "$bundle")" ] && return 0
+
+    if [ "$CHECK_ONLY" -eq 1 ]; then
+        echo_warn "$id: ${current:-<none>} → $bundle"
+        PENDING=$((PENDING + 1))
+        return 0
+    fi
+
+    utiluti "$kind" set "$id" "$bundle" </dev/null >/dev/null 2>&1
+    current=$(current_handler "$kind" "$id")
+    if [ "$(lower "$current")" = "$(lower "$bundle")" ]; then
+        echo_ok "$id → $bundle"
+    else
+        # Dialog declined, or the app is missing (a Brewfile install that
+        # did not land).
+        echo_err "$id still opens in ${current:-<none>}, wanted $bundle"
+        FAILURES=$((FAILURES + 1))
+    fi
+}
+
+main() {
+    [ "${1:-}" = "--check" ] && CHECK_ONLY=1
+
+    command -v utiluti >/dev/null 2>&1 || {
+        echo_err "utiluti not installed (brew install utiluti)"
+        exit 1
+    }
+
+    local kind bundle id
+    while read -r kind bundle id; do
+        apply_binding "$kind" "$bundle" "$id"
+    done < <(bindings)
+
+    if [ "$CHECK_ONLY" -eq 1 ]; then
+        if [ "$PENDING" -gt 0 ]; then
+            echo_warn "$PENDING binding(s) to change"
+            exit 2
+        fi
+        echo_ok "All default applications already bound."
+        exit 0
+    fi
+
+    if [ "$FAILURES" -gt 0 ]; then
+        echo_err "$FAILURES binding(s) failed"
+        exit 1
+    fi
+    echo_ok "Default applications bound."
+}
+
+# Sourced by mac-default-apps-tests.sh, which runs the functions against a
+# stubbed utiluti; only touch the real bindings when run directly.
+if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
+    main "$@"
+fi
