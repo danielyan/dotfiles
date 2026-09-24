@@ -6,21 +6,35 @@
 #   curl -L .../bin/mac-setup | bash -s -- --server
 set -euo pipefail
 
-export PATH="/opt/homebrew/bin:$PATH"
-
-if ! command -v brew >/dev/null 2>&1; then
-    echo "Installing Homebrew"
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+main() {
     export PATH="/opt/homebrew/bin:$PATH"
-fi
 
-command -v yadm >/dev/null 2>&1 || brew install yadm gpg
+    if ! command -v brew >/dev/null 2>&1; then
+        echo "Installing Homebrew"
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        export PATH="/opt/homebrew/bin:$PATH"
+    fi
 
-# Re-running on a machine that already has the dotfiles should not fail.
-if [ -d "$HOME/.local/share/yadm/repo.git" ]; then
-    yadm pull --ff-only
+    command -v yadm >/dev/null 2>&1 || brew install yadm gpg
+
+    # Re-running on a machine that already has the dotfiles should not fail.
+    if [ -d "$HOME/.local/share/yadm/repo.git" ]; then
+        yadm pull --ff-only
+    else
+        yadm clone https://github.com/danielyan/dotfiles.git
+    fi
+
+    yadm bootstrap "$@"
+}
+
+# Piped into bash, this script IS bash's stdin, and everything it runs would
+# inherit the pipe: the Homebrew installer cannot ask for a sudo password and
+# refuses, and every prompt in bootstrap reads EOF, i.e. "no". So run main
+# against the terminal. Only main is redirected: bash itself must keep
+# reading the script from the pipe. With no terminal at all (CI), fall back
+# to plain stdin, where prompts see EOF instead of hanging.
+if (exec </dev/tty) 2>/dev/null; then
+    main "$@" </dev/tty
 else
-    yadm clone https://github.com/danielyan/dotfiles.git
+    main "$@"
 fi
-
-yadm bootstrap "$@"
