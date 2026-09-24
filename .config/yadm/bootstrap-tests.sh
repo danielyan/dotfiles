@@ -95,5 +95,41 @@ echo "gh not installed"
 out=$(run_case '' y)
 check "falls back to a manual instruction" "Add this machine's SSH key to GitHub" "$out"
 
+# set_login_shell: $1 = shell dscl reports, $2 = sudo stub exit status
+# chsh used to prompt for the account password itself, and a typo failed with
+# nothing recorded. The stubs log calls so the tests can see what ran.
+shell_case() {
+    local tmp; tmp=$(mktemp -d)
+    printf '#!/usr/bin/env bash\necho "UserShell: %s"\n' "$1" > "$tmp/dscl"
+    printf '#!/usr/bin/env bash\necho "sudo $*" >> "%s/calls"\nexit %s\n' "$tmp" "$2" > "$tmp/sudo"
+    chmod +x "$tmp/dscl" "$tmp/sudo"
+    PATH="$tmp:$PATH" USER=testuser bash -c '
+        echo_ok()   { echo "[ok] $1"; }
+        echo_err()  { echo "[err] $1"; }
+        TODOS=(); todo() { TODOS+=("$1"); echo_err "$1"; }
+        '"$(awk "/^set_login_shell\(\)/,/^\}/" "$BOOTSTRAP")"'
+        set_login_shell /opt/homebrew/bin/fish
+        printf "TODOCOUNT:%d\n" "${#TODOS[@]}"
+    ' 2>&1
+    [ -f "$tmp/calls" ] && cat "$tmp/calls"
+    rm -rf "$tmp"
+}
+
+echo "login shell already fish"
+out=$(shell_case /opt/homebrew/bin/fish 0)
+check  "reports it"            "fish is already the default shell" "$out"
+refute "does not call chsh"    "sudo chsh"                         "$out"
+check  "records no todo"       "TODOCOUNT:0"                       "$out"
+
+echo "login shell is zsh"
+out=$(shell_case /bin/zsh 0)
+check "changes it via sudo"    "sudo chsh -s /opt/homebrew/bin/fish testuser" "$out"
+check "records no todo"        "TODOCOUNT:0"                                  "$out"
+
+echo "chsh fails"
+out=$(shell_case /bin/zsh 1)
+check "records a retryable todo" "Set fish as the login shell: sudo chsh -s /opt/homebrew/bin/fish testuser" "$out"
+check "counts it"                "TODOCOUNT:1"                                                           "$out"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

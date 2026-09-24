@@ -86,6 +86,23 @@ if [ -f "$MCP_SRC" ] && [ -x "$MCP_MERGE" ]; then
 fi
 
 ## Shell ###################################################
+# The directory record, not $SHELL: $SHELL only changes at the next login,
+# so a re-run in the same session would otherwise change it again.
+set_login_shell() {
+    local want="$1" current
+    current=$(dscl . -read "/Users/$USER" UserShell 2>/dev/null | awk '{print $2}')
+    if [ "$current" = "$want" ]; then
+        echo_ok "fish is already the default shell"
+        return 0
+    fi
+    echo_ok "Setting fish as the default shell..."
+    # sudo rather than plain chsh: sudo was just used for /etc/shells, so it
+    # is usually still authorised, while chsh asks for the account password
+    # again and a typo used to fail with nothing recorded.
+    sudo chsh -s "$want" "$USER" \
+        || todo "Set fish as the login shell: sudo chsh -s $want $USER"
+}
+
 FISH_PATH="$(command -v fish || echo /opt/homebrew/bin/fish)"
 
 if [ -x "$FISH_PATH" ]; then
@@ -94,12 +111,7 @@ if [ -x "$FISH_PATH" ]; then
         echo "$FISH_PATH" | sudo tee -a /etc/shells >/dev/null
     fi
 
-    if [ "$SHELL" != "$FISH_PATH" ]; then
-        echo_ok "Setting fish as the default shell..."
-        chsh -s "$FISH_PATH"
-    else
-        echo_ok "fish is already the default shell"
-    fi
+    set_login_shell "$FISH_PATH"
 else
     echo_err "fish not found, leaving shell unchanged"
 fi
