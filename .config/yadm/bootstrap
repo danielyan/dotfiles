@@ -126,7 +126,9 @@ brew update
 brew upgrade
 
 echo_ok "Installing apps from Brewfile..."
-brew bundle --file="$HOME/Brewfile"
+# A failed install would otherwise scroll past: bootstrap runs without set -e.
+brew bundle --file="$HOME/Brewfile" \
+    || todo "Some Brewfile entries did not install. Retry with: brew bundle --file=~/Brewfile"
 
 ## Touch ID for sudo ########################################
 enable_touchid_sudo

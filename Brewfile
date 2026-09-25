@@ -53,5 +53,6 @@ cask "synology-drive"
 cask "bambu-studio"
 cask "claude-code"
 cask "tailscale-app"   # mesh network + Tailscale SSH
+cask "danielyan/tap/fresco"  # own app; updates itself via Sparkle
 
 mas "Brother iPrint&Scan", id: 1193539993
