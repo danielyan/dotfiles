@@ -20,8 +20,14 @@ done 2>/dev/null &
 # General UI/UX                                                               #
 ###############################################################################
 
-# Enable Dark Mode
-osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
+# Enable Dark Mode. The preference makes it stick from the next login; the
+# osascript switches it now, but needs Automation permission for System
+# Events, which a fresh Mac asks for and which may be declined. Auto
+# appearance would override both, so it is turned off.
+defaults write NSGlobalDomain AppleInterfaceStyle -string "Dark"
+defaults delete NSGlobalDomain AppleInterfaceStyleSwitchesAutomatically 2>/dev/null
+osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true' \
+	|| echo "Dark mode applies at next login (System Events permission declined)"
 
 # Disable Click on Desktop thing (clicking wallpaper hides all windows)
 defaults write com.apple.WindowManager EnableStandardClickToShowDesktop -bool false
@@ -91,6 +97,10 @@ defaults write com.apple.CrashReporter DialogType -string "none"
 ###############################################################################
 # Trackpad, mouse, keyboard, Bluetooth accessories, and input                 #
 ###############################################################################
+
+# Mouse tracking speed. The Settings slider tops out at 3; the default is
+# about 1. Takes effect at the next login.
+defaults write NSGlobalDomain com.apple.mouse.scaling -float 2.5
 
 # Increase sound quality for Bluetooth headphones/headsets
 defaults write com.apple.BluetoothAudioAgent "Apple Bitpool Min (editable)" -int 40
@@ -249,6 +259,11 @@ defaults write com.apple.dock show-process-indicators -bool true
 
 # Automatically hide and show the Dock
 defaults write com.apple.dock autohide -bool true
+
+# Bottom-right hot corner: no action (Apple's default is Quick Note).
+# 1 means "-" in the Hot Corners menu; a modifier of 0 means none needed.
+defaults write com.apple.dock wvous-br-corner -int 1
+defaults write com.apple.dock wvous-br-modifier -int 0
 
 # Dock animation
 defaults write com.apple.dock autohide-delay -float 0.05
