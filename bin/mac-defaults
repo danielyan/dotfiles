@@ -95,6 +95,13 @@ defaults write com.apple.CrashReporter DialogType -string "none"
 # Increase sound quality for Bluetooth headphones/headsets
 defaults write com.apple.BluetoothAudioAgent "Apple Bitpool Min (editable)" -int 40
 
+# Free ⌘Space for Alfred by turning off Spotlight's "Show Spotlight search"
+# shortcut (symbolic hotkey 64; parameters are space, key code 49, ⌘).
+# activateSettings applies it now; without it, it waits for the next login.
+defaults write com.apple.symbolichotkeys AppleSymbolicHotKeys -dict-add 64 \
+	"<dict><key>enabled</key><false/><key>value</key><dict><key>parameters</key><array><integer>32</integer><integer>49</integer><integer>1048576</integer></array><key>type</key><string>standard</string></dict></dict>"
+/System/Library/PrivateFrameworks/SystemAdministration.framework/Resources/activateSettings -u
+
 # Enable full keyboard access for all controls
 # (e.g. enable Tab in modal dialogs)
 defaults write NSGlobalDomain AppleKeyboardUIMode -int 3
