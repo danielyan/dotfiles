@@ -245,6 +245,13 @@ defaults write com.apple.dock showhidden -bool true
 # Don’t show recent applications in Dock
 defaults write com.apple.dock show-recents -bool false
 
+# Empty the Dock down to Finder and Trash, which are built in and cannot be
+# removed. persistent-apps is the pinned apps on the left; persistent-others
+# is the folders and stacks on the right (Downloads, by default). Apps are
+# launched from Alfred, so nothing needs pinning.
+defaults write com.apple.dock persistent-apps -array
+defaults write com.apple.dock persistent-others -array
+
 ################################################################################
 ## Terminal & iTerm 2                                                          #
 ################################################################################
