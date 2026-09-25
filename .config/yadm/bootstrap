@@ -38,6 +38,71 @@ TODOS=()
 todo() { TODOS+=("$1"); echo_err "$1"; }
 ############################################################
 
+# Touch ID for sudo, via sudo_local: /etc/pam.d/sudo includes it first, and
+# macOS updates leave it alone. pam_reattach makes Touch ID work inside tmux;
+# ignore_ssh skips it over ssh, where the sensor is on the other machine.
+#
+# pam_reattach is loaded by sudo as root, but Homebrew's copy sits in a
+# directory this user owns, so anything running as this user could replace
+# it. Load a root-owned copy instead, refreshed when Homebrew's changes.
+#
+# A PAM line naming a module that cannot load can break sudo outright, so a
+# line is only written for a module confirmed present.
+enable_touchid_sudo() {
+    local pam_file="${1:-/etc/pam.d/sudo_local}"
+    local tid="${2:-/usr/lib/pam/pam_tid.so.2}"
+    local reattach_src="${3:-/opt/homebrew/lib/pam/pam_reattach.so}"
+    local reattach="${4:-/usr/local/lib/pam/pam_reattach.so}"
+
+    if [ ! -e "$tid" ]; then
+        echo_warn "No Touch ID PAM module; leaving sudo alone"
+        return 0
+    fi
+
+    if [ -f "$reattach_src" ] && ! cmp -s "$reattach_src" "$reattach"; then
+        sudo install -d -o root -g wheel -m 755 "$(dirname "$reattach")" \
+            && sudo install -o root -g wheel -m 444 "$reattach_src" "$reattach" \
+            || todo "Copy pam_reattach for Touch ID in tmux: sudo install -o root -g wheel -m 444 $reattach_src $reattach"
+    fi
+
+    local want="# Managed by yadm bootstrap: Touch ID for sudo."
+    [ -f "$reattach" ] && want+=$'\n'"auth       optional       $reattach ignore_ssh"
+    want+=$'\n'"auth       sufficient     pam_tid.so"
+
+    if [ "$(cat "$pam_file" 2>/dev/null)" = "$want" ]; then
+        echo_ok "Touch ID for sudo already enabled"
+        return 0
+    fi
+    [ -f "$pam_file" ] && sudo cp "$pam_file" "$pam_file.bak"
+    if printf '%s\n' "$want" | sudo tee "$pam_file" >/dev/null; then
+        echo_ok "Touch ID enabled for sudo"
+    else
+        todo "Enable Touch ID for sudo: write $pam_file (see bootstrap)"
+    fi
+}
+
+# Tailscale's MagicDNS names a machine after its hostname when it first signs
+# in, and ~/.ssh/config.mini and `mini` reach the server as plain "mini". So
+# this has to run before Tailscale sign-in; renaming later does not rename the
+# tailnet node.
+set_hostname() {
+    local want="$1" n current changed=0
+    for n in ComputerName LocalHostName HostName; do
+        current=$(scutil --get "$n" 2>/dev/null)
+        [ "$current" = "$want" ] && continue
+        if sudo scutil --set "$n" "$want"; then
+            changed=1
+        else
+            todo "Set the $n: sudo scutil --set $n $want"
+        fi
+    done
+    if [ "$changed" -eq 1 ]; then
+        echo_ok "Hostname set to $want"
+    else
+        echo_ok "Hostname already $want"
+    fi
+}
+
 echo_ok "Bootstrap starting..."
 
 ## Apple updates ###########################################
@@ -62,6 +127,9 @@ brew upgrade
 
 echo_ok "Installing apps from Brewfile..."
 brew bundle --file="$HOME/Brewfile"
+
+## Touch ID for sudo ########################################
+enable_touchid_sudo
 
 ## Secrets #################################################
 # Plaintext secrets live only in yadm's encrypted archive; see
@@ -263,6 +331,8 @@ fi
 ## Server mode (the always-on Mac Mini) ####################
 if [ "$SERVER_MODE" -eq 1 ]; then
     echo_ok "Applying always-on server configuration..."
+
+    set_hostname mini
 
     # Never sleep; wake after power loss; allow background work while idle.
     sudo pmset -a sleep 0 disksleep 0 powernap 1

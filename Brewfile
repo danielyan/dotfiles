@@ -20,6 +20,7 @@ brew "syncthing"     # ~/.claude runtime state between machines
 brew "atuin"         # shell history synced across machines
 brew "jq"
 brew "gnupg"     # yadm encrypt/decrypt
+brew "pam-reattach"  # Touch ID for sudo inside tmux; see bootstrap
 
 cask "font-fira-code"
 cask "font-iosevka"
