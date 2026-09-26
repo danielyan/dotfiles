@@ -3,6 +3,30 @@
 # Read-only: checks state, changes nothing. Each failed check prints the exact
 # remedy. Exits non-zero if anything failed, so it works in a script.
 
+# The Syncthing folders that point at ~/.claude, summarised from the JSON of
+# /rest/config/folders on stdin. Parsed rather than grepped: the API
+# pretty-prints ("fsWatcherEnabled": true, with a space), so the old grep for
+# "fsWatcherEnabled":true never matched. The watcher always read as off,
+# versioning always as on, and any folder that merely mentioned .claude as
+# shared. Prints `count N`, then for the folder shared with the most devices:
+# `id`, `devices`, `watcher 0|1`, `versioning TYPE|none`.
+_claude_folders() {
+    python3 -c '
+import json, os, sys
+target = os.path.realpath(os.path.expanduser(os.environ.get("CLAUDE_DIR", "~/.claude")))
+folders = [f for f in json.load(sys.stdin)
+           if os.path.realpath(os.path.expanduser(f.get("path", ""))) == target]
+print("count", len(folders))
+if folders:
+    f = max(folders, key=lambda f: len(f.get("devices", [])))
+    print("id", f["id"])
+    print("devices", len(f.get("devices", [])))
+    print("watcher", int(bool(f.get("fsWatcherEnabled"))))
+    print("versioning", (f.get("versioning") or {}).get("type") or "none")
+'
+}
+_cf_field() { printf '%s\n' "$1" | awk -v k="$2" '$1 == k { print $2 }'; }
+
 mini_doctor() {
     local pass=0 warn=0 fail=0
     _p() { ok "$1"; pass=$((pass+1)); }
@@ -109,10 +133,19 @@ mini_doctor() {
             apikey=$(sed -n 's:.*<apikey>\(.*\)</apikey>.*:\1:p' \
                 "$HOME/Library/Application Support/Syncthing/config.xml" 2>/dev/null | head -1)
             if [ -n "$apikey" ]; then
-                curl -sf -m 5 -H "X-API-Key: $apikey" "$SYNCTHING_API/rest/config/folders" 2>/dev/null \
-                    | grep -q '\.claude' \
-                    && _p "~/.claude shared in syncthing" \
-                    || _f "~/.claude not shared yet" "add it at $SYNCTHING_API and share with the other device"
+                local report count
+                report=$(curl -sf -m 5 -H "X-API-Key: $apikey" "$SYNCTHING_API/rest/config/folders" 2>/dev/null \
+                         | _claude_folders 2>/dev/null)
+                count=$(_cf_field "$report" count)
+                if [ "${count:-0}" -eq 0 ]; then
+                    _f "~/.claude not shared yet" "mini pair"
+                else
+                    [ "$count" -gt 1 ] && _w "$count syncthing folders point at ~/.claude" \
+                        "keep '$(_cf_field "$report" id)' and remove the others; removing one deletes the shared .stfolder marker, so then: mkdir ~/.claude/.stfolder"
+                    [ "$(_cf_field "$report" devices)" -gt 1 ] \
+                        && _p "~/.claude shared in syncthing" \
+                        || _f "~/.claude is in syncthing but shared with no other device" "mini pair"
+                fi
 
                 local devices
                 devices=$(curl -sf -m 5 -H "X-API-Key: $apikey" "$SYNCTHING_API/rest/config/devices" 2>/dev/null \
@@ -121,19 +154,15 @@ mini_doctor() {
                     || _f "no peer device paired" "pair the other machine at $SYNCTHING_API"
 
                 # Settings that are wrong by default for this folder.
-                local folder
-                folder=$(curl -sf -m 5 -H "X-API-Key: $apikey" \
-                    "$SYNCTHING_API/rest/config/folders" 2>/dev/null \
-                    | tr '}' '\n' | grep -A200 '\.claude' | head -40)
-                if [ -n "$folder" ]; then
-                    echo "$folder" | grep -q '"fsWatcherEnabled":true' \
+                if [ "${count:-0}" -gt 0 ]; then
+                    [ "$(_cf_field "$report" watcher)" = 1 ] \
                         && _p "filesystem watcher on (changes propagate in seconds)" \
                         || _w "filesystem watcher off" "enable 'Watch for Changes' on the folder"
-                    if echo "$folder" | grep -q '"type":"none"'; then
+                    if [ "$(_cf_field "$report" versioning)" = none ]; then
                         _w "no file versioning on ~/.claude" \
                            "set Staggered, max age 30d — transcripts are not reproducible"
                     else
-                        _p "file versioning enabled"
+                        _p "file versioning enabled ($(_cf_field "$report" versioning))"
                     fi
                 fi
             fi

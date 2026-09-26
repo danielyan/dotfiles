@@ -213,5 +213,60 @@ else
     printf '  - skipped: fish is not installed\n'
 fi
 
+echo "doctor: reading syncthing's folders"
+# The API pretty-prints ("fsWatcherEnabled": true), which the old grep for
+# "fsWatcherEnabled":true never matched. Fixtures are pretty-printed on purpose.
+cf_home=$(mktemp -d); mkdir -p "$cf_home/.claude"
+cf() { printf '%s' "$1" | CLAUDE_DIR="$cf_home/.claude" bash -c '
+    . "$HOME/.local/lib/mini/doctor.sh"; _claude_folders'; }
+field() { printf '%s\n' "$1" | awk -v k="$2" '$1 == k { print $2 }'; }
+
+healthy='[
+  {
+    "id": "claude-state",
+    "path": "'"$cf_home"'/.claude",
+    "devices": [ { "deviceID": "AIR" }, { "deviceID": "MINI" } ],
+    "fsWatcherEnabled": true,
+    "versioning": { "type": "staggered" }
+  }
+]'
+out=$(cf "$healthy")
+check "a watched folder reads as watched"     "1"         "$(field "$out" watcher)"
+check "staggered versioning is reported"      "staggered" "$(field "$out" versioning)"
+check "shared with both devices"              "2"         "$(field "$out" devices)"
+
+# What this Air actually had: a hand-made folder given as ~/.claude and the
+# one mini pair created, given as an absolute path — the same directory.
+duplicate='[
+  {
+    "id": "3khhq-ijoxl",
+    "path": "'"$cf_home"'/.claude/",
+    "devices": [ { "deviceID": "AIR" } ],
+    "fsWatcherEnabled": false,
+    "versioning": { "type": "" }
+  },
+  {
+    "id": "claude-state",
+    "path": "'"$cf_home"'/.claude",
+    "devices": [ { "deviceID": "AIR" }, { "deviceID": "MINI" } ],
+    "fsWatcherEnabled": true,
+    "versioning": { "type": "staggered" }
+  }
+]'
+out=$(cf "$duplicate")
+check "two folders on one path are counted"   "2"            "$(field "$out" count)"
+check "the shared one is the one reported"    "claude-state" "$(field "$out" id)"
+
+unwatched='[ { "id": "x", "path": "'"$cf_home"'/.claude", "devices": [ { "deviceID": "AIR" } ],
+               "fsWatcherEnabled": false, "versioning": { "type": "" } } ]'
+out=$(cf "$unwatched")
+check "an unwatched folder reads as unwatched" "0"    "$(field "$out" watcher)"
+check "no versioning reads as none"            "none" "$(field "$out" versioning)"
+check "shared with nobody"                     "1"    "$(field "$out" devices)"
+
+out=$(cf '[ { "id": "photos", "path": "/Volumes/photos", "devices": [], "fsWatcherEnabled": true } ]')
+check "other folders are not ~/.claude"        "0"    "$(field "$out" count)"
+rm -rf "$cf_home"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
