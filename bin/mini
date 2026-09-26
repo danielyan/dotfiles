@@ -45,7 +45,18 @@ require_reachable() {
     die "cannot reach '$MINI_HOST' — is Tailscale up and the Mini awake?"
 }
 
-export -f ok no maybe section die have is_server reachable require_reachable
+# Run a bash command line on the Mini, in a login shell so Homebrew is on PATH.
+#
+# The command goes in on stdin, never as ssh arguments. ssh joins its arguments
+# with spaces and the Mini's login shell splits the result again, so words
+# passed separately are re-split there: `ssh mini bash -lc "syncthing cli
+# show"` reached bash as `bash -lc syncthing`, a bare `syncthing`. Quoting for
+# that shell is no fix either, because it is fish, whose single quotes treat
+# backslashes differently from bash's — and %q output is full of them. The
+# words `bash -ls` read the same in any shell.
+remote_bash() { printf '%s\n' "$1" | ssh -o BatchMode=yes "$MINI_HOST" 'bash -ls'; }
+
+export -f ok no maybe section die have is_server reachable require_reachable remote_bash
 
 # --- dispatch -------------------------------------------------------------
 COMMANDS="connect doctor preflight land pair ls run shell status"

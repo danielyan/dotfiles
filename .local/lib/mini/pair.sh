@@ -12,7 +12,7 @@ MINI_FOLDER_PATH="${MINI_FOLDER_PATH:-$HOME/.claude}"
 MINI_VERSION_MAXAGE="${MINI_VERSION_MAXAGE:-2592000}"
 
 _st()        { syncthing cli "$@" 2>/dev/null; }
-_st_remote() { ssh -o BatchMode=yes "$MINI_HOST" -- bash -lc "syncthing cli $* 2>/dev/null"; }
+_st_remote() { remote_bash "syncthing cli $(printf '%q ' "$@") 2>/dev/null"; }
 
 _device_id()        { _st show system        | sed -n 's/.*"myID" *: *"\([^"]*\)".*/\1/p'; }
 _device_id_remote() { _st_remote show system | sed -n 's/.*"myID" *: *"\([^"]*\)".*/\1/p'; }
@@ -82,7 +82,7 @@ mini_pair() {
     if _st_remote config devices list | grep -q "$me"; then
         ok "this machine already known on $MINI_HOST"
     else
-        _st_remote config devices add-json "'$(_device_json "$me" "$local_name")'" \
+        _st_remote config devices add-json "$(_device_json "$me" "$local_name")" \
             && ok "added this machine on $MINI_HOST" || no "failed to add this machine on $MINI_HOST"
     fi
 
@@ -98,7 +98,7 @@ mini_pair() {
     if _st_remote config folders list | grep -qx "$MINI_FOLDER_ID"; then
         ok "folder '$MINI_FOLDER_ID' already exists on $MINI_HOST"
     else
-        _st_remote config folders add-json "'$(_folder_json "$me" "$peer")'" \
+        _st_remote config folders add-json "$(_folder_json "$me" "$peer")" \
             && ok "created '$MINI_FOLDER_ID' on $MINI_HOST" \
             || no "failed to create folder on $MINI_HOST"
     fi

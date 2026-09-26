@@ -13,9 +13,6 @@ mini_run() {
 
     require_reachable
 
-    # A login shell so the remote PATH includes Homebrew; without -l, ssh gets
-    # a non-interactive shell that has never sourced a profile.
-    local quoted
-    quoted=$(printf '%q ' "$@")
-    ssh -o BatchMode=yes "$MINI_HOST" -- bash -lc "$quoted"
+    # %q quotes each argument for the bash that runs the line on the Mini.
+    remote_bash "$(printf '%q ' "$@")"
 }

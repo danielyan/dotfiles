@@ -19,11 +19,14 @@ check_rc() {
     else printf '  ✗ %s (want rc=%s, got %s)\n' "$1" "$2" "$3"; fail=$((fail+1)); fi
 }
 
-# ssh stub: succeeds for the reachability probe, echoes args otherwise.
+# ssh stub: succeeds for the reachability probe, echoes args otherwise, and
+# for remote_bash (`bash -ls`) the command line it was fed on stdin.
 cat > "$stub_dir/ssh" <<'STUB'
 #!/usr/bin/env bash
 for a in "$@"; do [ "$a" = "true" ] && exit 0; done
 echo "SSH_ARGS: $*"
+[ "${*: -1}" = "bash -ls" ] && printf 'SSH_STDIN: %s\n' "$(cat)"
+exit 0
 STUB
 cat > "$stub_dir/mosh" <<'STUB'
 #!/usr/bin/env bash
@@ -39,8 +42,10 @@ check_rc "unknown command exits 1" 1 "$rc"
 check "unknown command suggests connect" "mini connect bogus" "$out"
 
 echo "run"
-out=$("$MINI" run echo hello 2>&1);  check "run uses a login shell" "bash -lc" "$out"
-check "run passes the command" "echo hello" "$out"
+# What goes over the wire. Whether it arrives intact on a real login shell is
+# checked by "remote commands arrive intact" below.
+out=$("$MINI" run echo hello 2>&1);  check "run uses a login shell" "bash -ls" "$out"
+check "run sends the command on stdin" "SSH_STDIN: echo hello" "$out"
 out=$("$MINI" run echo 'two words' 2>&1)
 check "run quotes arguments with spaces" "two\\ words" "$out"
 out=$("$MINI" run 'rm -rf /; echo pwned' 2>&1)
@@ -156,6 +161,57 @@ fi
 check "dirty repo still not pushed" "dirtyrepo — uncommitted changes" "$out"
 refute "never touches the real dotfiles repo" "TEST BUG" "$out"
 rm -rf "$land_fix"
+
+echo "remote commands arrive intact"
+# The stubs above echo their arguments, which hid a bug: real ssh joins them
+# with spaces and the Mini's login shell (fish) splits the result again, so
+# `ssh mini bash -lc "syncthing cli show system"` ran a bare `syncthing`, and
+# `mini run echo hello world` printed nothing. This stub behaves like the real
+# thing: drop options and host, join the rest, hand it to fish, stdin intact.
+if have_fish=$(command -v fish); then
+    remote=$(mktemp -d); mkdir -p "$remote/home" "$remote/bin"
+    # A throwaway home for the "Mini": its login bash puts the stubs first,
+    # ahead of the real Homebrew tools path_helper would otherwise find.
+    printf 'export PATH="%s/bin:$PATH"\n' "$remote" > "$remote/home/.bash_profile"
+    cat > "$remote/bin/syncthing" <<STUB
+#!/usr/bin/env bash
+for a in "\$@"; do printf '%s\n' "\$a"; done > "$remote/syncthing-args"
+[ "\$*" = "cli show system" ] && printf '{\n  "myID": "PEER-DEVICE-ID",\n  "uptime": 1\n}\n'
+exit 0
+STUB
+    cat > "$remote/ssh" <<STUB
+#!/usr/bin/env bash
+while [ \$# -gt 0 ]; do case \$1 in -o) shift 2 ;; -*) shift ;; *) shift; break ;; esac; done
+[ "\${1:-}" = "--" ] && shift
+HOME="$remote/home" exec "$have_fish" --no-config -c "\$*"
+STUB
+    chmod +x "$remote/ssh" "$remote/bin/syncthing"
+
+    rrun() { PATH="$remote:$PATH" MINI_HOST=mini "$MINI" run "$@" 2>&1; }
+    check "mini run keeps its arguments"   "hello world"                 "$(rrun echo hello world)"
+    check "a single quote survives"        "it's fine"                   "$(rrun printf '%s' "it's fine")"
+    check "\$ and backticks stay literal"  '$HOME and `date`'            "$(rrun printf '%s' '$HOME and `date`')"
+
+    # pair's calls, through the same path.
+    pair_remote() {
+        PATH="$remote:$PATH" MINI_HOST=mini bash -c '
+            '"$(awk '/^remote_bash\(\)/,/^\}|; }$/' "$MINI")"'
+            . "$HOME/.local/lib/mini/pair.sh"
+            '"$1"
+    }
+    check "pair reads the peer's device id" "PEER-DEVICE-ID" "$(pair_remote '_device_id_remote')"
+    pair_remote '_st_remote config devices add-json "$(_device_json "MY-ID" "Levs MacBook Air")"' >/dev/null
+    sent=$(sed -n 5p "$remote/syncthing-args")
+    check "the device json arrives as one argument" '"name":"Levs MacBook Air"' "$sent"
+    if printf '%s' "$sent" | python3 -c 'import json,sys; json.load(sys.stdin)' 2>/dev/null; then
+        printf '  ✓ and still parses as json\n'; pass=$((pass+1))
+    else
+        printf '  ✗ device json no longer parses: %s\n' "$sent"; fail=$((fail+1))
+    fi
+    rm -rf "$remote"
+else
+    printf '  - skipped: fish is not installed\n'
+fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
