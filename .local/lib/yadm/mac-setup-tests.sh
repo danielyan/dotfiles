@@ -56,16 +56,32 @@ RUNNER
 echo "piped into bash from a terminal (the documented one-liner)"
 out=$(run_case tty)
 check "clones the dotfiles"              "yadm clone https://github.com/danielyan/dotfiles.git" "$out"
-check "passes --server to bootstrap"     "yadm bootstrap --server"  "$out"
-check "bootstrap gets the terminal"      "bootstrap --server stdin_tty=yes" "$out"
+check "--server marks the machine"       "yadm config --add local.class server" "$out"
+# yadm execs the bootstrap script with no arguments, so passing any would
+# be silently lost — which is how server mode never ran.
+check "bootstrap runs with no arguments" "yadm bootstrap stdin_tty=yes" "$out"
 check "bootstrap's prompts reach the user" "prompt got: y"          "$out"
 check "exits cleanly"                    "exit=0"                   "$out"
 
 echo "no terminal at all (CI, cron)"
 out=$(run_case none)
-check "still runs bootstrap"             "yadm bootstrap --server stdin_tty=no" "$out"
+check "still runs bootstrap"             "yadm bootstrap stdin_tty=no" "$out"
 check "prompts see EOF, not a hang"      "prompt got: <eof>"        "$out"
 check "exits cleanly"                    "exit=0"                   "$out"
+
+echo "without --server"
+tmp=$(mktemp -d)
+cat > "$tmp/run.sh" <<RUNNER
+export HOME='$tmp' LOG='$tmp/log'
+brew() { :; }
+yadm() { echo "yadm \$*" >> "\$LOG"; }
+export -f brew yadm
+cat '$SUT' | bash -s
+RUNNER
+bash "$tmp/run.sh" </dev/null >/dev/null 2>&1
+out=$(cat "$tmp/log"); rm -rf "$tmp"
+if [[ "$out" != *"local.class"* ]]; then printf '  ✓ a laptop is not marked as a server\n'; pass=$((pass+1))
+else printf '  ✗ a laptop was marked as a server\n'; fail=$((fail+1)); fi
 
 echo
 printf '%d passed, %d failed\n' "$pass" "$fail"

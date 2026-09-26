@@ -4,8 +4,12 @@
 # Idempotent: safe to re-run at any time. Every step checks current state
 # before acting.
 #
-#   bootstrap            provision a normal workstation
-#   bootstrap --server   also apply always-on server config (the Mac Mini)
+#   yadm bootstrap       provision this Mac
+#
+# Server mode (the always-on Mac Mini) is a property of the machine, not of
+# one run: mark it once with `yadm config local.class server` and every run
+# applies the always-on config. Undo with `yadm config --unset local.class`.
+# Running this script directly as `bootstrap --server` also sets the mark.
 #
 # See vault: projects/project-machine-continuity.md
 
@@ -13,8 +17,21 @@ set -uo pipefail
 
 export PATH="/opt/homebrew/bin:$PATH"
 
+# `yadm bootstrap` execs this script with no arguments, so a --server passed
+# to it never arrived and server mode never ran; the machine-local class does
+# not depend on how this was started. yadm keeps it in the local repo config,
+# which is never pushed.
+# A machine can carry several classes, so check the whole list.
+server_mode() {
+    command -v yadm >/dev/null 2>&1 || return 1
+    if [ "${1:-}" = "--server" ] && ! yadm config --get-all local.class 2>/dev/null | grep -qx server; then
+        yadm config --add local.class server
+    fi
+    yadm config --get-all local.class 2>/dev/null | grep -qx server
+}
+
 SERVER_MODE=0
-[ "${1:-}" = "--server" ] && SERVER_MODE=1
+server_mode "$@" && SERVER_MODE=1
 
 ## Functions ###############################################
 ask() {
@@ -126,7 +143,7 @@ restore_secrets() {
     fi
 }
 
-# The always-on Mini's settings. Runs first thing in --server mode: it used
+# The always-on Mini's settings. Runs first thing in server mode: it used
 # to be the last step, so any run that stopped early (a declined passphrase,
 # Ctrl-C at a prompt) left the Mini sleeping after a minute and unreachable.
 configure_server() {

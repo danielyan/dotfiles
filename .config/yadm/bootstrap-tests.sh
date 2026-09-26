@@ -375,5 +375,43 @@ server_call=$(grep -n -m1 'configure_server$' "$BOOTSTRAP" | cut -d: -f1)
 check "configure_server is called before the first prompt" "yes" \
     "$([ -n "$server_call" ] && [ "$server_call" -lt "$first_prompt" ] && echo yes || echo "no (call $server_call, first prompt $first_prompt)")"
 
+# server_mode: $1 = the machine's classes, one per line; $2 = argument
+mode_case() {
+    local tmp; tmp=$(mktemp -d); mkdir "$tmp/bin"
+    printf '%s' "$1" > "$tmp/classes"
+    cat > "$tmp/bin/yadm" <<STUB
+#!/usr/bin/env bash
+case "\$*" in
+  "config --get-all local.class") cat "$tmp/classes" ;;
+  "config --add local.class "*) echo "added \$4" >> "$tmp/calls"; printf '%s\n' "\$4" >> "$tmp/classes" ;;
+  *) echo "unexpected: yadm \$*" >> "$tmp/calls"; exit 1 ;;
+esac
+STUB
+    chmod +x "$tmp/bin/yadm"
+    PATH="$tmp/bin:$PATH" bash -c '
+        '"$(awk "/^server_mode\(\)/,/^\}/" "$BOOTSTRAP")"'
+        server_mode '"${2:-}"' && echo "MODE:server" || echo "MODE:workstation"
+    ' 2>&1
+    [ -f "$tmp/calls" ] && cat "$tmp/calls"
+    rm -rf "$tmp"
+}
+
+echo "server mode comes from the machine, not the arguments"
+out=$(mode_case "" "")
+check  "an unmarked machine is a workstation" "MODE:workstation" "$out"
+refute "and is not marked"                    "added"            "$out"
+out=$(mode_case "" --server)
+check  "--server marks the machine"           "added server"     "$out"
+check  "and is server mode"                   "MODE:server"      "$out"
+out=$(mode_case "server" "")
+check  "a marked machine is a server with no arguments" "MODE:server" "$out"
+out=$(mode_case "server" --server)
+refute "marking twice adds nothing"           "added"            "$out"
+out=$(mode_case $'work\nserver' "")
+check  "server among several classes counts"  "MODE:server"      "$out"
+out=$(mode_case "work" "")
+check  "another class alone does not"         "MODE:workstation" "$out"
+refute "nothing unexpected is asked of yadm"  "unexpected"       "$(mode_case "" --server)"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

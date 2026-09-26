@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Provision a fresh Mac from nothing. Passes its arguments to yadm bootstrap,
-# so --server works through the curl one-liner:
+# Provision a fresh Mac from nothing:
 #
 #   curl -L .../bin/mac-setup | bash
-#   curl -L .../bin/mac-setup | bash -s -- --server
+#   curl -L .../bin/mac-setup | bash -s -- --server     # the always-on Mini
+#
+# --server marks the machine with yadm's machine-local class before
+# bootstrapping, since `yadm bootstrap` passes no arguments to the script.
 set -euo pipefail
 
 main() {
@@ -24,7 +26,10 @@ main() {
         yadm clone https://github.com/danielyan/dotfiles.git
     fi
 
-    yadm bootstrap "$@"
+    if [ "${1:-}" = "--server" ] && ! yadm config --get-all local.class 2>/dev/null | grep -qx server; then
+        yadm config --add local.class server
+    fi
+    yadm bootstrap
 }
 
 # Piped into bash, this script IS bash's stdin, and everything it runs would

@@ -37,9 +37,11 @@ Tailscale account.
 curl -L 'https://raw.githubusercontent.com/danielyan/dotfiles/refs/heads/main/bin/mac-setup' | bash -s -- --server
 ```
 
-Installs Homebrew + yadm, clones the dotfiles over `$HOME`, runs
-`yadm bootstrap --server`, which applies `pmset -a sleep 0 disksleep 0 powernap 1 autorestart 1` —
+Installs Homebrew + yadm, clones the dotfiles over `$HOME`, marks the machine
+as a server (`yadm config --add local.class server`) and runs `yadm bootstrap`,
+which applies `pmset -a sleep 0 disksleep 0 powernap 1 autorestart 1` —
 never sleep, restart after a power cut — and pins the iCloud vault locally.
+The mark stays, so later plain `yadm bootstrap` runs keep the Mini a server.
 
 Bootstrap will offer to generate an SSH key and register it with GitHub. Accept.
 Keys are per-machine so either can be revoked independently.

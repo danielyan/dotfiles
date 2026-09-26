@@ -285,9 +285,14 @@ checks current state first, so re-running is safe and is the normal way to apply
 new Brewfile entries.
 
 ```
-yadm bootstrap            # a workstation, e.g. the Air
-yadm bootstrap --server   # an always-on machine, e.g. the Mini
+yadm bootstrap                              # any machine
+yadm config --add local.class server        # once, on an always-on machine (the Mini)
 ```
+
+Server mode is a property of the machine, not a flag: `yadm bootstrap` runs the
+script with no arguments, so `yadm bootstrap --server` silently does nothing
+extra. The class is stored in the local repo config and never pushed; undo it
+with `yadm config --unset local.class`.
 
 It installs Homebrew if missing then runs `brew bundle`, makes fish the default
 shell, symlinks VSCode settings and installs extensions with `--force` so
@@ -295,7 +300,7 @@ already-installed ones are a no-op, wires `~/.ssh/config.mini` into
 `~/.ssh/config`, offers to generate a **per-machine** SSH key for GitHub, and
 starts Syncthing.
 
-`--server` additionally applies `pmset -a sleep 0 disksleep 0 powernap 1
+On a server it first applies `pmset -a sleep 0 disksleep 0 powernap 1
 autorestart 1` — never sleep, restart after a power cut — and pins the vault.
 Screen Sharing and automatic login have no reliable scriptable equivalent and
 stay manual.
@@ -337,7 +342,7 @@ never line up.
 .config/fish/completions/ mini.fish — completions only, no logic
 .config/tmux/            tmux.conf — long scrollback, detach-safe
 .config/ghostty/         terminal config, cmd+shift+m keybind
-.config/yadm/bootstrap   provisioning, idempotent, --server mode
+.config/yadm/bootstrap   provisioning, idempotent, server mode by yadm class
 .config/vscode/          settings + extension list
 .claude/                 CLAUDE.md, settings.json, skills, .stignore
 .ssh/config.mini         Mini host config (no key material)
