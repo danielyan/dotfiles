@@ -116,6 +116,7 @@ never tracked.
 | `.config/vscode/mcp.json` | VSCode MCP server token (symlinked into place) |
 | `projects/.env` | project-local secrets |
 | `.config/fresco/credentials.json` | Fresco's source API keys (its settings, `config.json`, are tracked in the clear) |
+| `.config/mini/repos` | the repos `mini repos sync` clones into `~/projects` |
 
 Claude's MCP definitions are kept apart from `~/.claude.json` because that file
 also holds Claude Code's own runtime state, which Syncthing owns. `bootstrap`
@@ -195,6 +196,7 @@ works over ssh, in any shell, and on a machine that hasn't been configured yet.
 | `mini pair` | Wire Syncthing to the Mini, both ends, idempotently |
 | `mini preflight` | Before going offline: pull everything down |
 | `mini land` | After coming back: push up, catch the Mini up |
+| `mini repos` | The repos `~/projects` should hold: `add`, `remove`, `list`, `sync` (list kept encrypted) |
 | `mini help` | Usage |
 
 `bin/mini` is a dispatcher; each subcommand is a file in `~/.local/lib/mini/`

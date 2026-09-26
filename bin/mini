@@ -59,7 +59,7 @@ remote_bash() { printf '%s\n' "$1" | ssh -o BatchMode=yes "$MINI_HOST" 'bash -ls
 export -f ok no maybe section die have is_server reachable require_reachable remote_bash
 
 # --- dispatch -------------------------------------------------------------
-COMMANDS="connect doctor preflight land pair ls run shell status"
+COMMANDS="connect doctor preflight land pair ls run shell status repos"
 
 usage() {
     cat <<USAGE
@@ -75,6 +75,7 @@ ${C_BOLD}mini${C_OFF} — control the always-on Mac Mini
   ${C_BOLD}mini doctor${C_OFF}             full check of every link, with remedies
   ${C_BOLD}mini preflight${C_OFF}          before going offline: pull everything down
   ${C_BOLD}mini land${C_OFF}               after coming back: push up, catch the Mini up
+  ${C_BOLD}mini repos${C_OFF} [cmd]         the repos ~/projects should hold (mini repos help)
   ${C_BOLD}mini help${C_OFF}               this
 
 Host is '$MINI_HOST'; override with \$MINI_HOST.

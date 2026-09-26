@@ -268,5 +268,137 @@ out=$(cf '[ { "id": "photos", "path": "/Volumes/photos", "devices": [], "fsWatch
 check "other folders are not ~/.claude"        "0"    "$(field "$out" count)"
 rm -rf "$cf_home"
 
+echo "repos: the list and cloning it"
+rp=$(mktemp -d); mkdir -p "$rp/projects" "$rp/upstream"
+for r in alpha beta; do
+    git init -q --bare "$rp/upstream/$r.git"
+    git clone -q "$rp/upstream/$r.git" "$rp/seed-$r" 2>/dev/null
+    ( cd "$rp/seed-$r" && git config user.email t@t && git config user.name t \
+      && echo "$r" > README && git add . && git commit -qm init && git branch -M main \
+      && git push -q origin main ) >/dev/null 2>&1
+done
+R() { MINI_REPOS_FILE="$rp/repos" MINI_PROJECTS_DIR="$rp/projects" "$MINI" repos "$@" 2>&1; }
+
+out=$(R list); rc=$?
+check "no list yet is explained, not an error" "no repo list yet" "$out"
+check_rc "and exits 0" 0 "$rc"
+
+printf '# only a comment\n' > "$rp/repos"
+out=$(R list); rc=$?
+check "an empty list says so" "the repo list is empty" "$out"
+check_rc "and exits 0" 0 "$rc"
+rm "$rp/repos"
+
+out=$(R add "file://$rp/upstream/alpha.git")
+check "add takes the name from the URL" "added alpha" "$out"
+check "and says how it travels" "yadm encrypt" "$out"
+check "the file is owner-only" "600" "$(stat -f %Lp "$rp/repos")"
+out=$(R add --as betty "file://$rp/upstream/beta.git")
+check "add --as sets the folder name" "added betty" "$out"
+out=$(R add "file://$rp/upstream/alpha")
+check "the same repo again is a no-op" "alpha is already listed" "$out"
+out=$(R add --as alpha "file://$rp/upstream/beta.git"); rc=$?
+check "a clashing name is refused" "alpha is already listed as" "$out"
+check_rc "and exits 1" 1 "$rc"
+out=$(R add --as ../escape "file://$rp/upstream/beta.git"); rc=$?
+check "a name with a slash is refused" "not usable as a folder name" "$out"
+out=$(R add not-a-thing); rc=$?
+check "an unknown name is refused" "neither a URL nor a git repo" "$out"
+out=$(R add --as x "file://$rp/upstream/alpha.git" "file://$rp/upstream/beta.git"); rc=$?
+check "--as takes exactly one URL" "one repo at a time" "$out"
+check_rc "and exits 1" 1 "$rc"
+out=$(R add); rc=$?
+check "add with nothing explains usage" "usage: mini repos add" "$out"
+
+out=$(R status); rc=$?
+check "status names what is missing" "alpha — not cloned" "$out"
+check_rc "status exits 2 when something is missing" 2 "$rc"
+
+out=$(R sync); rc=$?
+check "sync clones alpha" "cloned alpha" "$out"
+check "sync clones betty" "cloned betty" "$out"
+check_rc "sync exits 0" 0 "$rc"
+check "the clone has the right contents" "beta" "$(cat "$rp/projects/betty/README" 2>/dev/null)"
+out=$(R status); rc=$?
+check_rc "status exits 0 once everything is here" 0 "$rc"
+out=$(R sync)
+check "a second sync has nothing to do" "everything listed is already here" "$out"
+
+# Never touch a folder that is already there.
+rm -rf "$rp/projects/alpha" && mkdir "$rp/projects/alpha" && echo mine > "$rp/projects/alpha/notes"
+git -C "$rp/projects/betty" remote set-url origin "file://$rp/elsewhere.git"
+out=$(R sync)
+check "a non-repo folder is left alone" "alpha left alone" "$out"
+check "its contents survive" "mine" "$(cat "$rp/projects/alpha/notes")"
+check "a clone with another origin is left alone" "betty left alone" "$out"
+out=$(R list)
+check "list flags the non-repo folder" "exists but is not a git repo" "$out"
+check "list flags the other origin" "has a different origin" "$out"
+
+# add from an existing clone, by name: reads its origin.
+git clone -q "$rp/upstream/alpha.git" "$rp/projects/gamma" 2>/dev/null
+out=$(R add gamma)
+check "add <name> reads the clone's origin" "added gamma  $rp/upstream/alpha.git" "$out"
+git init -q "$rp/projects/loner"
+out=$(R add loner); rc=$?
+check "a clone with no remote is refused" "has no origin remote" "$out"
+
+printf '# my own comment\n' >> "$rp/repos"
+out=$(R remove betty)
+check "remove drops the entry" "removed betty" "$out"
+check "and says the clone is untouched" "itself is untouched" "$out"
+check "the clone really is still there" "yes" "$([ -d "$rp/projects/betty" ] && echo yes)"
+check "comments survive a remove" "# my own comment" "$(cat "$rp/repos")"
+check "the file stays owner-only" "600" "$(stat -f %Lp "$rp/repos")"
+out=$(R remove betty); rc=$?
+check "removing an unknown name is refused" "not in the list" "$out"
+out=$(R delete alpha); rc=$?
+check "delete is not a command" "unknown: mini repos delete" "$out"
+check_rc "and exits 1" 1 "$rc"
+check "an unknown subcommand shows the usage" "mini repos add <entry>..." "$out"
+
+# Several entries at once; a bad one does not stop the rest.
+mr=$(mktemp -d); mkdir -p "$mr/projects"
+M() { MINI_REPOS_FILE="$mr/repos" MINI_PROJECTS_DIR="$mr/projects" "$MINI" repos "$@" 2>&1; }
+out=$(M add "file://$rp/upstream/alpha.git" nonsense "file://$rp/upstream/beta.git"); rc=$?
+check "add takes several entries" "added alpha" "$out"
+check "the entry after a bad one still lands" "added beta" "$out"
+check "the bad one is named" "nonsense is neither a URL" "$out"
+check_rc "a partly failed add exits 1" 1 "$rc"
+check "the hint is printed once" "1" "$(printf '%s\n' "$out" | grep -c 'yadm encrypt')"
+out=$(M remove alpha ghost beta); rc=$?
+check "remove takes several names" "removed alpha" "$out"
+check "the name after an unknown one is still removed" "removed beta" "$out"
+check "the unknown one is named" "ghost is not in the list" "$out"
+check_rc "a partly failed remove exits 1" 1 "$rc"
+left=$(grep -E '^(alpha|beta) ' "$mr/repos"); check "both are gone from the file" "<none>" "${left:-<none>}"
+out=$(M remove); rc=$?
+check "remove with nothing explains usage" "usage: mini repos remove" "$out"
+rm -rf "$mr"
+
+out=$(R help); rc=$?
+check "mini repos help describes add" "mini repos add <entry>..." "$out"
+check "and --as" "mini repos add --as <name> <url>" "$out"
+check "and remove" "mini repos remove <name>..." "$out"
+check_rc "and exits 0" 0 "$rc"
+check "mini help lists repos" "mini repos" "$("$MINI" help 2>&1)"
+
+# GitHub URLs go through gh, which brings its own login.
+mkdir -p "$rp/bin"
+cat > "$rp/bin/gh" <<STUB
+#!/usr/bin/env bash
+case "\$1 \$2" in
+  "auth status") exit 0 ;;
+  "repo clone") echo "gh \$*" >> "$rp/gh-calls"; git init -q "\$4"
+                git -C "\$4" remote add origin "\$3"; exit 0 ;;
+esac
+STUB
+chmod +x "$rp/bin/gh"
+out=$(PATH="$rp/bin:$PATH" R add https://github.com/someone/private-thing)
+out=$(PATH="$rp/bin:$PATH" R sync)
+check "github repos are cloned with gh" "gh repo clone https://github.com/someone/private-thing $rp/projects/private-thing" "$(cat "$rp/gh-calls" 2>/dev/null)"
+check "and reported" "cloned private-thing" "$out"
+rm -rf "$rp"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

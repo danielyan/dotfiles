@@ -353,6 +353,24 @@ register_github_key() {
 }
 register_github_key
 
+## Projects ################################################
+# After the GitHub login above: private repos need it. The list is one of the
+# decrypted secrets, so a Mac without it yet has nothing to do here.
+if [ -x "$HOME/bin/mini" ] && [ -f "$HOME/.config/mini/repos" ]; then
+    echo_ok "Checking ~/projects against the repo list..."
+    "$HOME/bin/mini" repos status
+    case $? in
+        0) ;;
+        2) if ask "Clone the missing repos into ~/projects? "; then
+               "$HOME/bin/mini" repos sync \
+                   || todo "Some repos did not clone. Retry with: mini repos sync"
+           else
+               todo "Repos not cloned. Run: mini repos sync"
+           fi ;;
+        *) todo "Could not check the repo list. Run: mini repos status" ;;
+    esac
+fi
+
 ## Syncthing ###############################################
 if command_exists syncthing; then
     if ! brew services list | grep -q '^syncthing.*started'; then
