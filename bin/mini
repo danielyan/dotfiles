@@ -33,8 +33,10 @@ die()     { printf '%smini:%s %s\n' "$C_NO" "$C_OFF" "$1" >&2; exit 1; }
 
 have()    { command -v "$1" >/dev/null 2>&1; }
 
-# Is this machine the always-on one? Nothing to connect to if so.
-is_server() { [ "$(pmset -g custom 2>/dev/null | awk '/sleep/{print $2; exit}')" = "0" ]; }
+# Is this machine the always-on one? Nothing to connect to if so. Matches the
+# `sleep` line exactly: /sleep/ first hit `displaysleep`, which the server
+# config leaves at 10, so the Mini never recognised itself.
+is_server() { [ "$(pmset -g 2>/dev/null | awk '$1 == "sleep" { print $2; exit }')" = "0" ]; }
 
 # Reachability with a short timeout, so failures are fast and legible rather
 # than a 30-second TCP hang.

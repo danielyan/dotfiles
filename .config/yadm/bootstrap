@@ -126,6 +126,34 @@ restore_secrets() {
     fi
 }
 
+# The always-on Mini's settings. Runs first thing in --server mode: it used
+# to be the last step, so any run that stopped early (a declined passphrase,
+# Ctrl-C at a prompt) left the Mini sleeping after a minute and unreachable.
+configure_server() {
+    echo_ok "Applying always-on server configuration..."
+
+    set_hostname mini
+
+    # Never sleep; wake after power loss; allow background work while idle.
+    sudo pmset -a sleep 0 disksleep 0 powernap 1
+    sudo pmset -a autorestart 1 2>/dev/null || echo_warn "autorestart unsupported"
+    # pmset exiting 0 is not the setting taking: read it back.
+    if [ "$(pmset -g | awk '$1 == "sleep" { print $2; exit }')" = 0 ]; then
+        echo_ok "Power management configured: never sleeps"
+    else
+        todo "The Mini still sleeps. Run: sudo pmset -a sleep 0 disksleep 0 powernap 1 autorestart 1"
+    fi
+
+    # iCloud evicts files it thinks are cold. A headless service reading a
+    # dataless placeholder fails, so pin the vault and keep it pinned.
+    local vault="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Notes"
+    if [ -d "$vault" ]; then
+        brctl download "$vault" >/dev/null 2>&1 && echo_ok "Vault pinned locally"
+    else
+        echo_warn "Vault not present yet — re-run once iCloud has synced"
+    fi
+}
+
 # Tailscale's MagicDNS names a machine after its hostname when it first signs
 # in, and ~/.ssh/config.mini and `mini` reach the server as plain "mini". So
 # this has to run before Tailscale sign-in; renaming later does not rename the
@@ -149,6 +177,8 @@ set_hostname() {
 }
 
 echo_ok "Bootstrap starting..."
+
+[ "$SERVER_MODE" -eq 1 ] && configure_server
 
 ## Apple updates ###########################################
 if command_exists softwareupdate; then
@@ -384,25 +414,8 @@ if command_exists syncthing; then
     echo_warn "Once Tailscale is up and the Mini is reachable: mini pair"
 fi
 
-## Server mode (the always-on Mac Mini) ####################
+## Server mode: what needs a person #########################
 if [ "$SERVER_MODE" -eq 1 ]; then
-    echo_ok "Applying always-on server configuration..."
-
-    set_hostname mini
-
-    # Never sleep; wake after power loss; allow background work while idle.
-    sudo pmset -a sleep 0 disksleep 0 powernap 1
-    sudo pmset -a autorestart 1 2>/dev/null || echo_warn "autorestart unsupported"
-    echo_ok "Power management configured"
-
-    # iCloud evicts files it thinks are cold. A headless service reading a
-    # dataless placeholder fails, so pin the vault and keep it pinned.
-    VAULT="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Notes"
-    if [ -d "$VAULT" ]; then
-        brctl download "$VAULT" >/dev/null 2>&1 && echo_ok "Vault pinned locally"
-    else
-        echo_warn "Vault not present yet — re-run once iCloud has synced"
-    fi
     echo_warn "Manually enable: Settings > General > Sharing > Screen Sharing"
     echo_warn "Manually enable: Settings > Users & Groups > Automatic login"
 fi

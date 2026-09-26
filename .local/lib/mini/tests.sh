@@ -400,5 +400,21 @@ check "github repos are cloned with gh" "gh repo clone https://github.com/someon
 check "and reported" "cloned private-thing" "$out"
 rm -rf "$rp"
 
+echo "is_server reads the sleep setting itself"
+# pmset lists displaysleep before sleep; matching /sleep/ read displaysleep.
+ps_dir=$(mktemp -d)
+# Its own ssh stub: earlier sections replace the shared one with a silent one.
+printf '#!/usr/bin/env bash\nfor a in "$@"; do [ "$a" = true ] && exit 0; done\necho "SSH_ARGS: $*"\n' > "$ps_dir/ssh"
+chmod +x "$ps_dir/ssh"
+pm() { printf '#!/usr/bin/env bash\nprintf "%s"\n' "$1" > "$ps_dir/pmset"; chmod +x "$ps_dir/pmset"; }
+pm ' displaysleep         10\n sleep                0\n disksleep            0\n'
+out=$(PATH="$ps_dir:$PATH" "$MINI" run echo on-the-server 2>&1)
+check "sleep 0 behind displaysleep 10 is the server" "on-the-server" "$out"
+refute "and runs locally, not over ssh" "SSH_ARGS" "$out"
+pm ' displaysleep         0\n sleep                1 (sleep prevented by powerd)\n'
+out=$(PATH="$ps_dir:$PATH" "$MINI" run echo elsewhere 2>&1)
+check "sleep 1 is not the server, even with displaysleep 0" "SSH_ARGS" "$out"
+rm -rf "$ps_dir"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

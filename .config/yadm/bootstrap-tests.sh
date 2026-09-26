@@ -321,5 +321,59 @@ out=$(secrets_case "" y 0 noarchive)
 check  "skips with a warning" "No yadm archive found" "$out"
 refute "does not decrypt"     "CALLED: yadm decrypt"          "$out"
 
+# configure_server: $1 = "applies" or "noop" (pmset exits 0 but changes nothing)
+server_case() {
+    local tmp; tmp=$(mktemp -d); mkdir "$tmp/bin"
+    echo 1 > "$tmp/sleep"
+    cat > "$tmp/bin/pmset" <<STUB
+#!/usr/bin/env bash
+if [ "\$1" = -g ]; then
+    printf ' displaysleep         10\n sleep                %s (sleep prevented by powerd)\n disksleep            10\n' "\$(cat "$tmp/sleep")"
+    exit 0
+fi
+echo "pmset \$*" >> "$tmp/calls"
+[ "$1" = applies ] && [ "\$2" = sleep ] && echo 0 > "$tmp/sleep"
+exit 0
+STUB
+    printf '#!/usr/bin/env bash\nexec "$@"\n' > "$tmp/bin/sudo"
+    printf '#!/usr/bin/env bash\n[ "$1" = --get ] && echo mini\nexit 0\n' > "$tmp/bin/scutil"
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$tmp/bin/brctl"
+    chmod +x "$tmp/bin/"*
+    PATH="$tmp/bin:$PATH" HOME="$tmp" bash -c '
+        echo_ok()   { echo "[ok] $1"; }
+        echo_err()  { echo "[err] $1"; }
+        echo_warn() { echo "[warn] $1"; }
+        TODOS=(); todo() { TODOS+=("$1"); echo_err "$1"; }
+        '"$(awk "/^set_hostname\(\)/,/^\}/" "$BOOTSTRAP")"'
+        '"$(awk "/^configure_server\(\)/,/^\}/" "$BOOTSTRAP")"'
+        configure_server
+        printf "TODOCOUNT:%d\n" "${#TODOS[@]}"
+    ' 2>&1
+    [ -f "$tmp/calls" ] && cat "$tmp/calls"
+    rm -rf "$tmp"
+}
+
+echo "server: power settings take"
+out=$(server_case applies)
+check  "sets sleep, disksleep and powernap" "pmset -a sleep 0 disksleep 0 powernap 1" "$out"
+check  "sets autorestart"                   "pmset -a autorestart 1"                  "$out"
+check  "confirms by reading back"           "never sleeps"                            "$out"
+check  "records no todo"                    "TODOCOUNT:0"                             "$out"
+
+echo "server: pmset exits 0 but changes nothing"
+# Reads the "sleep" line itself: displaysleep comes first in pmset's output.
+out=$(server_case noop)
+refute "does not claim success"  "never sleeps"                          "$out"
+check  "records a todo"          "The Mini still sleeps. Run: sudo pmset" "$out"
+check  "counts it"               "TODOCOUNT:1"                           "$out"
+
+echo "server: runs before anything that can stop the run"
+# Execution starts at "Bootstrap starting"; asks above it are in function bodies.
+start=$(grep -n -m1 'echo_ok "Bootstrap starting' "$BOOTSTRAP" | cut -d: -f1)
+first_prompt=$(awk -v s="$start" 'NR > s && /^[^#]*ask "/ { print NR; exit }' "$BOOTSTRAP")
+server_call=$(grep -n -m1 'configure_server$' "$BOOTSTRAP" | cut -d: -f1)
+check "configure_server is called before the first prompt" "yes" \
+    "$([ -n "$server_call" ] && [ "$server_call" -lt "$first_prompt" ] && echo yes || echo "no (call $server_call, first prompt $first_prompt)")"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
