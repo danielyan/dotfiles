@@ -2,7 +2,21 @@ if status is-interactive
     # gpg needs to know which terminal to ask for a passphrase in, or
     # `yadm encrypt` dies with "Inappropriate ioctl for device".
     set -gx GPG_TTY (tty)
+
+    # Put the machine badge first (functions/_tide_item_machine.fish),
+    # ahead of whatever `tide configure` chose. A global, so rerunning tide
+    # configure cannot drop it; interactive only, so bootstrap's
+    # non-interactive `tide configure --auto` never sees the shadowing global.
+    contains machine $tide_left_prompt_items
+    or set -g tide_left_prompt_items machine $tide_left_prompt_items
 end
+
+# The machine badge: which hosts show it, and how it looks. Outside the
+# interactive block because tide draws the prompt in a background `fish -c`.
+set -g tide_machine_show_on mini
+set -g tide_machine_icon \uf108
+set -g tide_machine_bg_color D75F00
+set -g tide_machine_color EEEEEE
 
 fish_add_path /opt/homebrew/bin
 
