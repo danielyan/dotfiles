@@ -115,6 +115,7 @@ never tracked.
 | `.config/claude/mcp-servers.json` | Claude Code MCP servers and their tokens |
 | `.config/vscode/mcp.json` | VSCode MCP server token (symlinked into place) |
 | `projects/.env` | project-local secrets |
+| `.config/fresco/credentials.json` | Fresco's source API keys (its settings, `config.json`, are tracked in the clear) |
 
 Claude's MCP definitions are kept apart from `~/.claude.json` because that file
 also holds Claude Code's own runtime state, which Syncthing owns. `bootstrap`

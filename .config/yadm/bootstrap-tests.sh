@@ -258,5 +258,68 @@ out=$(hostname_case "Levs-Virtual-Machine" 1)
 check "records a todo per name" "TODOCOUNT:3" "$out"
 check "with the command"        "Set the HostName: sudo scutil --set HostName mini" "$out"
 
+# restore_secrets: $1 = which listed files exist ("a b" of a, b, c),
+# $2 = answer to ask(), $3 = yadm decrypt exit, $4 = "noarchive" to omit it
+secrets_case() {
+    local tmp; tmp=$(mktemp -d); mkdir -p "$tmp/home/sub" "$tmp/bin"
+    printf '# comment\n\na.env\nsub/b.json\nc path.txt\n' > "$tmp/encrypt"
+    [ "${4:-}" = noarchive ] || echo archive > "$tmp/archive"
+    local f; for f in $1; do
+        case $f in a) touch "$tmp/home/a.env" ;; b) touch "$tmp/home/sub/b.json" ;; c) touch "$tmp/home/c path.txt" ;; esac
+    done
+    printf '#!/usr/bin/env bash\necho "CALLED: yadm $*" >> "%s/calls"\nexit %s\n' "$tmp" "$3" > "$tmp/bin/yadm"
+    chmod +x "$tmp/bin/yadm"
+    PATH="$tmp/bin:$PATH" ANSWER="$2" bash -c '
+        echo_ok()   { echo "[ok] $1"; }
+        echo_err()  { echo "[err] $1"; }
+        echo_warn() { echo "[warn] $1"; }
+        ask() { echo "[asked]"; [ "$ANSWER" = y ]; }
+        TODOS=(); todo() { TODOS+=("$1"); echo_err "$1"; }
+        '"$(awk "/^missing_secrets\(\)/,/^\}/" "$BOOTSTRAP")"'
+        '"$(awk "/^restore_secrets\(\)/,/^\}/" "$BOOTSTRAP")"'
+        restore_secrets "'"$tmp"'/encrypt" "'"$tmp"'/home" "'"$tmp"'/archive"
+        printf "TODOCOUNT:%d\n" "${#TODOS[@]}"
+    ' 2>&1
+    [ -f "$tmp/calls" ] && cat "$tmp/calls"
+    rm -rf "$tmp"
+}
+
+echo "secrets: fresh Mac, nothing decrypted yet"
+out=$(secrets_case "" n 0)
+check  "decrypts"                "CALLED: yadm decrypt"  "$out"
+refute "without asking"          "[asked]"       "$out"
+check  "records no todo"         "TODOCOUNT:0"   "$out"
+
+echo "secrets: everything present"
+out=$(secrets_case "a b c" y 0)
+check  "reports it"              "Secrets already decrypted" "$out"
+refute "does not decrypt"        "CALLED: yadm decrypt"              "$out"
+
+echo "secrets: a file joined the list after this Mac was set up"
+# The case the old api-keys.env sentinel missed entirely.
+out=$(secrets_case "a c" y 0)
+check  "names what is missing"   "    sub/b.json" "$out"
+refute "not what is present"     "    a.env"      "$out"
+check  "asks before overwriting" "[asked]"        "$out"
+check  "decrypts when told to"   "CALLED: yadm decrypt"   "$out"
+
+out=$(secrets_case "a c" n 0)
+refute "leaves files alone when declined" "CALLED: yadm decrypt"  "$out"
+check  "records a todo"                   "Missing secrets: sub/b.json. Restore with: yadm decrypt" "$out"
+
+echo "secrets: paths with spaces"
+out=$(secrets_case "a b" y 0)
+check  "handles a space in a path" "    c path.txt" "$out"
+
+echo "secrets: decrypt fails after asking"
+out=$(secrets_case "a" y 1)
+check  "records what is still missing" "secrets still missing: sub/b.json,c path.txt" "$out"
+check  "counts it"                     "TODOCOUNT:1" "$out"
+
+echo "secrets: no archive"
+out=$(secrets_case "" y 0 noarchive)
+check  "skips with a warning" "No yadm archive found" "$out"
+refute "does not decrypt"     "CALLED: yadm decrypt"          "$out"
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

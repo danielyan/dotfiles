@@ -81,6 +81,51 @@ enable_touchid_sudo() {
     fi
 }
 
+# Paths listed in the yadm encrypt file that are not on disk, one per line.
+# $1 = the encrypt list, $2 = the directory its paths are relative to.
+missing_secrets() {
+    local list="${1:-$HOME/.config/yadm/encrypt}" base="${2:-$HOME}" line
+    [ -f "$list" ] || return 0
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in ''|'#'*) continue ;; esac
+        [ -e "$base/$line" ] || printf '%s\n' "$line"
+    done < "$list"
+}
+
+# Decrypt the yadm archive when secrets are missing.
+#
+# Every listed path is checked, not one sentinel file: a Mac set up before a
+# path joined the list would otherwise never receive it. Decrypting restores
+# *all* of them, overwriting what is on disk, so a fresh Mac (nothing there)
+# decrypts straight away, while one missing only some asks first rather than
+# replacing newer local copies with archived ones.
+# $1 = the encrypt list, $2 = the directory its paths are relative to,
+# $3 = the archive.
+restore_secrets() {
+    local list="${1:-$HOME/.config/yadm/encrypt}" base="${2:-$HOME}"
+    local archive="${3:-$HOME/.local/share/yadm/archive}" missing total
+    if [ ! -f "$archive" ]; then
+        echo_warn "No yadm archive found; skipping secrets"
+        return 0
+    fi
+    missing=$(missing_secrets "$list" "$base")
+    total=$(grep -v -e '^#' -e '^[[:space:]]*$' "$list" | grep -c .)
+    if [ -z "$missing" ]; then
+        echo_ok "Secrets already decrypted"
+    elif [ "$(printf '%s\n' "$missing" | grep -c .)" -eq "$total" ]; then
+        echo_ok "Decrypting yadm archive..."
+        yadm decrypt || echo_warn "yadm decrypt failed; secrets stay missing"
+    else
+        echo_warn "Secrets missing on this Mac:"
+        printf '%s\n' "$missing" | sed 's/^/    /'
+        if ask "Decrypt the archive? It also overwrites the other secret files with their archived copies: "; then
+            yadm decrypt || todo "yadm decrypt failed; secrets still missing: $(printf '%s\n' "$missing" | paste -sd, -)"
+        else
+            todo "Missing secrets: $(printf '%s\n' "$missing" | paste -sd, -). Restore with: yadm decrypt (overwrites the others)"
+        fi
+    fi
+}
+
 # Tailscale's MagicDNS names a machine after its hostname when it first signs
 # in, and ~/.ssh/config.mini and `mini` reach the server as plain "mini". So
 # this has to run before Tailscale sign-in; renaming later does not rename the
@@ -136,16 +181,7 @@ enable_touchid_sudo
 ## Secrets #################################################
 # Plaintext secrets live only in yadm's encrypted archive; see
 # .config/yadm/encrypt for the list. Decrypting prompts for the passphrase.
-if [ -f "$HOME/.local/share/yadm/archive" ]; then
-    if [ ! -f "$HOME/.config/magpie/api-keys.env" ]; then
-        echo_ok "Decrypting yadm archive..."
-        yadm decrypt || echo_warn "yadm decrypt failed; secrets stay missing"
-    else
-        echo_ok "Secrets already decrypted"
-    fi
-else
-    echo_warn "No yadm archive found; skipping secrets"
-fi
+restore_secrets
 
 # MCP servers carry tokens, so they are stored apart from ~/.claude.json
 # (which also holds Claude Code runtime state) and merged back in here.

@@ -1,0 +1,24 @@
+{
+  "currentSelection" : {
+    "categoryID" : "__nsfw__",
+    "categoryName" : "NSFW",
+    "kind" : "category"
+  },
+  "currentSourceID" : "wallhaven",
+  "displayMode" : "perDisplay",
+  "downloadAskEveryTime" : false,
+  "downloadLocationPath" : "/Users/ldan/Library/Mobile Documents/com~apple~CloudDocs/wallpapers",
+  "matchSystemAppearance" : false,
+  "notifyOnRotation" : true,
+  "rotationChangeOnWake" : false,
+  "rotationInterval" : "hour6",
+  "sourceFolder-local" : "/Users/ldan/Downloads/wallpapers",
+  "sourceOption-reddit-slice" : "hot",
+  "sourceUsernames-deviantart" : [
+    "solsticeson"
+  ],
+  "sourceUsernames-reddit" : [
+    "NSFW_Wallpapers",
+    "Sexy4KWallpaper"
+  ]
+}
