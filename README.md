@@ -186,8 +186,9 @@ works over ssh, in any shell, and on a machine that hasn't been configured yet.
 
 | Command | Does |
 |---|---|
-| `mini` | Attach to the `main` session — the 95% case |
-| `mini connect <name>` | Attach to, or create, a named session |
+| `mini` | In `~/projects/<p>`: the `<p>` session, started in that folder. Anywhere else: `main` |
+| `mini <name>` | Attach to, or create, the `<name>` session (a project's starts in its folder) |
+| `mini connect [name]` | The same, spelled out; also for a session whose name is a command |
 | `mini ls` | List sessions without attaching |
 | `mini run <cmd>` | Run one command remotely and come straight back |
 | `mini shell` | A plain login shell, no tmux |
@@ -208,9 +209,11 @@ Two behaviours worth knowing:
   local tmux session rather than ssh-ing to itself, and `mini run` just runs the
   command. `doctor` checks the Mini for live sessions and iCloud eviction, and
   the Air for whether it can reach the Mini at all.
-- **An unrecognised word is an error, not a session name.** `mini magpie` tells
-  you to use `mini connect magpie` rather than silently creating a session named
-  `magpie` from a typo.
+- **Anything that is not a command is a session name**, but a near-miss of a
+  command is treated as a typo: `mini doctr` asks whether you meant `mini doctor`
+  unless a session called `doctr` already exists (`mini connect doctr` starts one
+  anyway). Names keep to letters, digits, `_` and `-`; anything else becomes `_`,
+  since tmux reads `.` and `:` in a target as separators.
 
 `$MINI_HOST` overrides the target host, `$MINI_SESSION` the default session.
 

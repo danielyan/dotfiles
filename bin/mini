@@ -58,7 +58,14 @@ require_reachable() {
 # words `bash -ls` read the same in any shell.
 remote_bash() { printf '%s\n' "$1" | ssh -o BatchMode=yes "$MINI_HOST" 'bash -ls'; }
 
-export -f ok no maybe section die have is_server reachable require_reachable remote_bash
+# Session names keep to letters, digits, _ and -, everything else becoming _.
+# tmux reads "." and ":" in a target as window and pane separators, so
+# "my.proj" could not reliably be found again; and the name crosses ssh (for
+# mosh too) as a bare word the Mini's shell splits, so a space would not
+# survive either.
+session_name() { printf '%s' "$1" | LC_ALL=C tr -c 'A-Za-z0-9_-' '_'; }
+
+export -f ok no maybe section die have is_server reachable require_reachable remote_bash session_name
 
 # --- dispatch -------------------------------------------------------------
 COMMANDS="connect doctor preflight land pair ls run shell status repos"
@@ -67,8 +74,10 @@ usage() {
     cat <<USAGE
 ${C_BOLD}mini${C_OFF} — control the always-on Mac Mini
 
-  ${C_BOLD}mini${C_OFF}                    attach to the '$MINI_SESSION' session (same as connect)
-  ${C_BOLD}mini connect${C_OFF} [name]     attach to, or create, a named tmux session
+  ${C_BOLD}mini${C_OFF}                    in ~/projects/<p>: the <p> session, started there;
+                          anywhere else: the '$MINI_SESSION' session
+  ${C_BOLD}mini${C_OFF} <name>             attach to, or create, the <name> session
+  ${C_BOLD}mini connect${C_OFF} [name]     the same, spelled out (and for names that are commands)
   ${C_BOLD}mini ls${C_OFF}                 list sessions without attaching
   ${C_BOLD}mini run${C_OFF} <command>      run one command remotely, no session
   ${C_BOLD}mini shell${C_OFF}              a plain login shell, no tmux
@@ -91,12 +100,49 @@ case "$cmd" in
     -h|--help|help) usage; exit 0 ;;
 esac
 
+# The command closest to $1, if it is close enough to be a typo of it.
+_near_command() {
+    local c best="" best_d=99 d limit
+    for c in $COMMANDS; do
+        d=$(awk -v a="$1" -v b="$c" 'BEGIN {
+            la = length(a); lb = length(b)
+            for (i = 0; i <= la; i++) m[i, 0] = i
+            for (j = 0; j <= lb; j++) m[0, j] = j
+            for (i = 1; i <= la; i++) for (j = 1; j <= lb; j++) {
+                x = m[i-1, j] + 1; y = m[i, j-1] + 1
+                z = m[i-1, j-1] + (substr(a, i, 1) != substr(b, j, 1))
+                m[i, j] = (x < y ? (x < z ? x : z) : (y < z ? y : z))
+            }
+            print m[la, lb] }')
+        [ "$d" -lt "$best_d" ] && { best=$c; best_d=$d; }
+    done
+    # Short commands tolerate one slip, longer ones two.
+    limit=2; [ ${#best} -le 4 ] && limit=1
+    [ "$best_d" -le "$limit" ] && printf '%s' "$best"
+}
+
+_session_exists() {
+    local target="=$(session_name "$1")"
+    if is_server; then
+        tmux has-session -t "$target" 2>/dev/null
+    else
+        ssh -o ConnectTimeout=5 -o BatchMode=yes "$MINI_HOST" tmux has-session -t "$target" 2>/dev/null
+    fi
+}
+
 if ! printf '%s\n' $COMMANDS | grep -qx "$cmd"; then
-    printf '%smini:%s unknown command '\''%s'\''\n' "$C_NO" "$C_OFF" "$cmd" >&2
-    printf "      %sto attach to a named session, use: mini connect %s%s\n" \
-        "$C_DIM" "$cmd" "$C_OFF" >&2
-    printf '      %scommands: %s%s\n' "$C_DIM" "$COMMANDS" "$C_OFF" >&2
-    exit 1
+    case "$cmd" in
+        -*) die "unknown option '$cmd' (mini help)" ;;
+    esac
+    # Not a command, so a session: `mini magpie` is `mini connect magpie`. A
+    # near-miss of a command is likelier a typo than a new session, so it
+    # only counts as a session when one by that name already exists.
+    near=$(_near_command "$cmd")
+    if [ -n "$near" ] && ! _session_exists "$cmd"; then
+        die "'$cmd' is not a command or a session — did you mean 'mini $near'? (to start a session called '$cmd': mini connect $cmd)"
+    fi
+    set -- "$cmd" "$@"
+    cmd=connect
 fi
 
 [ -f "$MINI_LIB/$cmd.sh" ] || die "missing $MINI_LIB/$cmd.sh (try: yadm pull)"

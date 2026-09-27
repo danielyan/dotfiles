@@ -99,7 +99,7 @@ will fail until step 3 — that's correct.
 Start a session so there's something to attach to:
 
 ```sh
-mini connect
+mini
 ```
 
 ---

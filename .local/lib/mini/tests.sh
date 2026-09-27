@@ -14,6 +14,8 @@ check() { # check <name> <expected-substring> <actual>
     if [[ "$3" == *"$2"* ]]; then printf '  ✓ %s\n' "$1"; pass=$((pass+1))
     else printf '  ✗ %s\n      want substring: %s\n      got: %s\n' "$1" "$2" "$3"; fail=$((fail+1)); fi
 }
+refute() { if [[ "$3" != *"$2"* ]]; then printf '  ✓ %s\n' "$1"; pass=$((pass+1));
+           else printf '  ✗ %s (found: %s)\n' "$1" "$2"; fail=$((fail+1)); fi; }
 check_rc() {
     if [ "$3" -eq "$2" ]; then printf '  ✓ %s\n' "$1"; pass=$((pass+1))
     else printf '  ✗ %s (want rc=%s, got %s)\n' "$1" "$2" "$3"; fail=$((fail+1)); fi
@@ -33,13 +35,22 @@ cat > "$stub_dir/mosh" <<'STUB'
 echo "MOSH_ARGS: $*"
 STUB
 chmod +x "$stub_dir/ssh" "$stub_dir/mosh"
+# Not the server, wherever the suite runs: on the Mini, connect would exec tmux.
+printf '#!/usr/bin/env bash\nprintf " displaysleep         10\\n sleep                1\\n"\n' > "$stub_dir/pmset"
+chmod +x "$stub_dir/pmset"
 export PATH="$stub_dir:$PATH"
+# A projects folder of the suite's own, and a working directory outside it, so
+# which session `mini` picks does not depend on where the suite was started.
+export MINI_PROJECTS_DIR="$stub_dir/projects"
+mkdir -p "$MINI_PROJECTS_DIR"
+cd "$stub_dir" || exit 1
 
 echo "dispatch"
 out=$("$MINI" help 2>&1);            check "help lists subcommands" "mini preflight" "$out"
-out=$("$MINI" bogus 2>&1); rc=$?;    check "unknown command names itself" "unknown command 'bogus'" "$out"
-check_rc "unknown command exits 1" 1 "$rc"
-check "unknown command suggests connect" "mini connect bogus" "$out"
+out=$("$MINI" bogus 2>&1); rc=$?;    check "a non-command is a session" "tmux new -A -s bogus" "$out"
+check_rc "and attaching exits 0" 0 "$rc"
+out=$("$MINI" -x 2>&1); rc=$?;       check "an unknown option is refused" "unknown option '-x'" "$out"
+check_rc "and exits 1" 1 "$rc"
 
 echo "run"
 # What goes over the wire. Whether it arrives intact on a real login shell is
@@ -59,6 +70,50 @@ check "connect attaches-or-creates" "tmux new -A -s main" "$out"
 out=$("$MINI" connect scratch 2>&1); check "connect honours a session name" "tmux new -A -s scratch" "$out"
 out=$(MINI_HOST=elsewhere "$MINI" connect 2>&1)
 check "MINI_HOST is respected" "elsewhere" "$out"
+
+echo "sessions by name, and by folder"
+mkdir -p "$MINI_PROJECTS_DIR/fresco/Sources" "$MINI_PROJECTS_DIR/my.proj"
+out=$(cd "$MINI_PROJECTS_DIR/fresco/Sources" && "$MINI" 2>&1)
+check "mini in a project is that project's session" "tmux new -A -s fresco" "$out"
+check "started in the project folder" "-c $MINI_PROJECTS_DIR/fresco" "$out"
+out=$(cd "$MINI_PROJECTS_DIR" && "$MINI" 2>&1)
+check "the projects folder itself is main" "tmux new -A -s main" "$out"
+refute "with no start folder" " -c " "$out"
+out=$("$MINI" 2>&1)
+check "mini elsewhere is main" "tmux new -A -s main" "$out"
+out=$("$MINI" fresco 2>&1)
+check "mini <project> starts in the project too" "-s fresco -c $MINI_PROJECTS_DIR/fresco" "$out"
+out=$("$MINI" magpie 2>&1)
+check "a name with no folder is just a session" "tmux new -A -s magpie" "$out"
+refute "with no start folder" " -c " "$out"
+out=$("$MINI" my.proj 2>&1)
+check "dots become underscores" "-s my_proj" "$out"
+refute "and a changed name gets no folder" " -c " "$out"
+out=$("$MINI" "two words" 2>&1)
+check "so do spaces" "-s two_words" "$out"
+out=$("$MINI" connect run 2>&1)
+check "connect takes a name that is a command" "tmux new -A -s run" "$out"
+out=$("$MINI" ls 2>&1)
+refute "a command is still a command" "tmux new" "$out"
+
+echo "a near-miss of a command is a typo, unless that session exists"
+typo=$(mktemp -d)
+cat > "$typo/ssh" <<STUB
+#!/usr/bin/env bash
+for a in "\$@"; do [ "\$a" = true ] && exit 0; done
+case "\$*" in *"has-session -t =doctr"*) [ -f "$typo/exists" ]; exit \$? ;; esac
+echo "SSH_ARGS: \$*"
+STUB
+chmod +x "$typo/ssh"
+out=$(PATH="$typo:$PATH" "$MINI" doctr 2>&1); rc=$?
+check "suggests the command" "did you mean 'mini doctor'" "$out"
+check "and how to start the session anyway" "mini connect doctr" "$out"
+check_rc "exits 1" 1 "$rc"
+refute "and attaches nothing" "MOSH_ARGS" "$out"
+touch "$typo/exists"
+out=$(PATH="$typo:$PATH" "$MINI" doctr 2>&1)
+check "an existing session by that name is attached" "tmux new -A -s doctr" "$out"
+rm -rf "$typo"
 
 echo "unreachable"
 cat > "$stub_dir/ssh" <<'STUB'
@@ -135,8 +190,6 @@ chmod +x "$stub_dir/ssh" "$stub_dir/yadm"
 out=$(printf 'n\n' | PROJECTS_DIR="$land_fix/p" "$MINI" land 2>&1)
 check "land finds the repo that is ahead" "ahead (1 commit(s))" "$out"
 check "land reports the dirty repo" "dirtyrepo — uncommitted changes" "$out"
-refute() { if [[ "$3" != *"$2"* ]]; then printf '  ✓ %s\n' "$1"; pass=$((pass+1));
-           else printf '  ✗ %s (found: %s)\n' "$1" "$2"; fail=$((fail+1)); fi; }
 refute "land ignores the repo with no remote" "noremote (" "$out"
 check "declining skips the push" "skipped pushing" "$out"
 
