@@ -199,6 +199,7 @@ works over ssh, in any shell, and on a machine that hasn't been configured yet.
 | `mini land` | After coming back: push up, catch the Mini up |
 | `mini repos` | The repos `~/projects` should hold: `add`, `remove`, `list`, `sync` (list kept encrypted) |
 | `mini help` | Usage |
+| `mini -v <command>` | Verbose: why it chose what it did, and every call to another machine, on stderr with keys masked (`MINI_VERBOSE=1` too) |
 
 `bin/mini` is a dispatcher; each subcommand is a file in `~/.local/lib/mini/`
 defining a `mini_<name>` function. Adding a subcommand means adding a file.

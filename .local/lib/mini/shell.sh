@@ -5,5 +5,6 @@
 mini_shell() {
     is_server && die "already on the Mini"
     require_reachable
+    debug "\$ ssh -t $MINI_HOST"
     exec ssh -t "$MINI_HOST"
 }

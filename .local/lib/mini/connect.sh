@@ -32,17 +32,27 @@ mini_connect() {
     if [ $# -gt 0 ]; then
         session=$(session_name "$1")
         project=$1
+        debug "session '$session' from the name given"
     elif project=$(_current_project); then
         session=$(session_name "$project")
+        debug "session '$session' from the project folder you are in ($PWD)"
     else
         session="$MINI_SESSION"
+        debug "session '$session', the default: $PWD is not inside $MINI_PROJECTS_DIR"
     fi
+    [ -n "${project:-}" ] && [ "$session" != "$project" ] \
+        && debug "renamed '$project' to '$session': names keep to letters, digits, _ and -"
 
     # A project's session starts in its folder. Only when the name needed no
     # changing: the path crosses ssh unquoted, like the name.
     if [ -n "${project:-}" ] && [ "$session" = "$project" ] \
         && [ -d "$MINI_PROJECTS_DIR/$project" ]; then
         dir="$MINI_PROJECTS_DIR/$project"
+        debug "if it has to be created, it starts in $dir"
+    elif [ -n "${project:-}" ] && [ "$session" != "$project" ]; then
+        debug "no start folder: the name had to change, and the path would cross ssh unquoted"
+    elif [ -n "${project:-}" ]; then
+        debug "no start folder: there is no $MINI_PROJECTS_DIR/$project here"
     fi
 
     # `new -A` attaches if the session exists and creates it otherwise, so one
@@ -53,15 +63,27 @@ mini_connect() {
 
     if is_server; then
         # Already on the Mini: attaching over ssh to ourselves would be absurd.
+        debug "on the server: running tmux here"
+        debug "\$ $(printf '%q ' "${tmux_cmd[@]}")"
         exec "${tmux_cmd[@]}"
     fi
 
     require_reachable
+    if [ "$MINI_VERBOSE" = 1 ]; then
+        if ssh -o BatchMode=yes "$MINI_HOST" tmux has-session -t "=$session" 2>/dev/null; then
+            debug "'$session' exists on $MINI_HOST: attaching"
+        else
+            debug "'$session' does not exist on $MINI_HOST: creating it"
+        fi
+    fi
 
     if have mosh; then
         # mosh survives lid-close, IP changes and long suspends; ssh does not.
+        debug "\$ mosh $MINI_HOST -- $(printf '%q ' "${tmux_cmd[@]}")"
         exec mosh "$MINI_HOST" -- "${tmux_cmd[@]}"
     else
+        debug "mosh is not installed here; ssh drops the session on lid-close"
+        debug "\$ ssh -t $MINI_HOST $(printf '%q ' "${tmux_cmd[@]}")"
         exec ssh -t "$MINI_HOST" "${tmux_cmd[@]}"
     fi
 }

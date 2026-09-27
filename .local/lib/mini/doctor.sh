@@ -137,6 +137,7 @@ mini_doctor() {
                 report=$(curl -sf -m 5 -H "X-API-Key: $apikey" "$SYNCTHING_API/rest/config/folders" 2>/dev/null \
                          | _claude_folders 2>/dev/null)
                 count=$(_cf_field "$report" count)
+                debug "syncthing folders for ~/.claude: $(printf '%s' "$report" | tr '\n' ' ')"
                 if [ "${count:-0}" -eq 0 ]; then
                     _f "~/.claude not shared yet" "mini pair"
                 else

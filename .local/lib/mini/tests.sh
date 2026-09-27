@@ -248,6 +248,7 @@ STUB
     # pair's calls, through the same path.
     pair_remote() {
         PATH="$remote:$PATH" MINI_HOST=mini bash -c '
+            debug() { :; }
             '"$(awk '/^remote_bash\(\)/,/^\}|; }$/' "$MINI")"'
             . "$HOME/.local/lib/mini/pair.sh"
             '"$1"
@@ -468,6 +469,59 @@ pm ' displaysleep         0\n sleep                1 (sleep prevented by powerd)
 out=$(PATH="$ps_dir:$PATH" "$MINI" run echo elsewhere 2>&1)
 check "sleep 1 is not the server, even with displaysleep 0" "SSH_ARGS" "$out"
 rm -rf "$ps_dir"
+
+echo "verbose"
+vb=$(mktemp -d)
+cat > "$vb/ssh" <<STUB
+#!/usr/bin/env bash
+for a in "\$@"; do [ "\$a" = true ] && exit 0; done
+case "\$*" in *"has-session -t =magpie"*) exit 0 ;; *has-session*) exit 1 ;; esac
+[ "\${*: -1}" = "bash -ls" ] && { printf 'SSH_STDIN: %s\n' "\$(cat)"; exit 0; }
+echo "SSH_ARGS: \$*"
+STUB
+printf '#!/usr/bin/env bash\necho "MOSH_ARGS: $*"\n' > "$vb/mosh"
+chmod +x "$vb/ssh" "$vb/mosh"
+V() { PATH="$vb:$PATH" "$MINI" "$@"; }
+
+quiet=$(V ls 2>&1)
+check "without -v there is no debug output" "<none>" "$(printf '%s' "$quiet" | grep '\[mini\]' || echo '<none>')"
+out=$(V -v ls 2>/dev/null)
+check "-v leaves stdout as it was" "$quiet" "$out"
+err=$(V -v ls 2>&1 >/dev/null)
+check "-v narrates on stderr" "[mini] this machine is a client" "$err"
+check "-v shows the remote calls" '[mini] $ ssh -o BatchMode=yes mini' "$err"
+check "including silenced ones" '[mini] $ ssh -o ConnectTimeout=5 -o BatchMode=yes mini true' "$err"
+check "--verbose is the same" "[mini] this machine is a client" "$(V --verbose ls 2>&1 >/dev/null)"
+check "so is MINI_VERBOSE=1" "[mini] this machine is a client" "$(MINI_VERBOSE=1 V ls 2>&1 >/dev/null)"
+
+out=$(V run echo -v 2>&1)
+check "a -v after the command belongs to it" "SSH_STDIN: echo -v" "$out"
+check "and does not turn on verbose" "<none>" "$(printf '%s' "$out" | grep '\[mini\]' || echo '<none>')"
+
+err=$(V -v run curl -H 'X-API-Key: s3cr3t' http://127.0.0.1:8384 2>&1 >/dev/null)
+check "the command sent is shown" "sending to mini's bash: curl" "$err"
+refute "an API key is masked" "s3cr3t" "$err"
+check "and marked as masked" "X-API-Key:" "$err"
+
+err=$(V -v magpie 2>&1 >/dev/null)
+check "connect says where the name came from" "session 'magpie' from the name given" "$err"
+check "and whether it exists" "'magpie' exists on mini: attaching" "$err"
+check "and the command it runs" '[mini] $ mosh mini -- tmux new -A -s magpie' "$err"
+err=$(cd "$MINI_PROJECTS_DIR/fresco" && V -v 2>&1 >/dev/null)
+check "connect names the project folder" "from the project folder you are in" "$err"
+check "and the start folder" "if it has to be created, it starts in $MINI_PROJECTS_DIR/fresco" "$err"
+check "and a missing session" "'fresco' does not exist on mini: creating it" "$err"
+err=$(V -v my.proj 2>&1 >/dev/null)
+check "connect explains a renamed session" "renamed 'my.proj' to 'my_proj'" "$err"
+err=$(V -v 2>&1 >/dev/null)
+check "connect explains the default" "session 'main', the default" "$err"
+
+# Tools are logging functions in verbose mode; `have` must not mistake one
+# for an installed program.
+out=$(PATH="$vb:/usr/bin:/bin:/usr/sbin:/sbin" "$MINI" -v pair 2>&1); rc=$?
+check "a missing tool is still missing under -v" "syncthing not installed" "$out"
+check_rc "and pair stops" 1 "$rc"
+rm -rf "$vb"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

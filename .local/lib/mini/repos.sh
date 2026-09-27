@@ -58,7 +58,12 @@ _repos_state() { # $1=name $2=url
     [ -e "$dir" ] || { echo missing; return; }
     [ -d "$dir/.git" ] || { echo not-a-repo; return; }
     origin=$(git -C "$dir" remote get-url origin 2>/dev/null)
-    [ "$(_repos_norm "$origin")" = "$(_repos_norm "$2")" ] && echo ok || echo other-remote
+    if [ "$(_repos_norm "$origin")" = "$(_repos_norm "$2")" ]; then
+        echo ok
+    else
+        debug "$1: origin $(_repos_norm "$origin") is not the listed $(_repos_norm "$2") (compared without .git or a trailing /)"
+        echo other-remote
+    fi
 }
 
 _repos_write_hint() {
@@ -173,9 +178,11 @@ _repos_clone() { # $1=url $2=dir
     case "$1" in
         https://github.com/*|git@github.com:*)
             if have gh && gh auth status >/dev/null 2>&1; then
+                debug "cloning with gh: it brings its own GitHub login"
                 gh repo clone "$1" "$2" -- --quiet
                 return
             fi
+            debug "cloning with plain git: gh is not installed or not logged in, so a private repo will fail"
             ;;
     esac
     git clone --quiet "$1" "$2"
@@ -206,6 +213,7 @@ _repos_sync() {
 }
 
 mini_repos() {
+    debug "repo list: $MINI_REPOS_FILE ($(_repos_entries | grep -c . | tr -d ' ') entries), projects in $MINI_PROJECTS_DIR"
     local sub="${1:-list}"
     [ $# -gt 0 ] && shift
     case "$sub" in
