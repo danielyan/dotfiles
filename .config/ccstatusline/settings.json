@@ -3,6 +3,19 @@
   "lines": [
     [
       {
+        "id": "785f0cf3-7a29-4739-945c-527444e41e43",
+        "type": "custom-command",
+        "commandPath": "$HOME/.config/ccstatusline/machine server",
+        "timeout": 500,
+        "preserveColors": true
+      },
+      {
+        "id": "dadcc5ff-3347-48ee-873e-f2c1df513cd9",
+        "type": "custom-command",
+        "commandPath": "$HOME/.config/ccstatusline/machine other",
+        "timeout": 500
+      },
+      {
         "id": "1",
         "type": "model",
         "color": "cyan"
