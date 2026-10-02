@@ -267,6 +267,40 @@ else
     printf '  - skipped: fish is not installed\n'
 fi
 
+echo "doctor: one line per check"
+dl() { bash -c '. "$HOME/.local/lib/dev/doctor.sh"; _doctor_line "$@"' _ "$@"; }
+check "a pass is the area, the message, then the mark" "[packages] tmux ✓" "$(dl packages ok tmux)"
+check "a warning ends in its own mark"  "[server] no sessions ➞"  "$(dl server warn 'no sessions')"
+check "a failure ends in a cross"       "[packages] mosh missing ✗" "$(dl packages fail 'mosh missing' 'brew bundle')"
+check "and its remedy goes underneath"  $'✗\n    → brew bundle'      "$(dl packages fail 'mosh missing' 'brew bundle')"
+check "no remedy, no second line"       "1"                         "$(dl shell ok 'dev installed' | wc -l | tr -d ' ')"
+out=$(PATH="$stub_dir:$PATH" "$DEV" doctor 2>&1)
+refute "the doctor no longer prints group headings" $'\nPackages\n' "$out"
+check "every check is tagged with its area" "[dotfiles] " "$out"
+check "a blank line separates areas" $'\n\n[dotfiles] ' "$out"
+check "but none comes before the first" "[packages] " "${out:0:11}"
+
+echo "doctor: a spinner while a slow check runs"
+# _doctor_spin <tty> <command...>: stdout is the command's, fd 4 the terminal's.
+spin() {
+    local tty=$1; shift
+    _DOCTOR_TTY=$tty bash -c '. "$HOME/.local/lib/dev/doctor.sh"
+        _doctor_spin dotfiles "fetching origin" "$@"' _ "$@" 4>"$stub_dir/spin.tty"
+}
+out=$(spin 0 sh -c 'echo result; exit 3'); rc=$?
+check    "without a terminal the output passes through" "result" "$out"
+check_rc "and so does the exit code"                    3        "$rc"
+check    "and nothing is drawn"                         "<none>" "$(cat "$stub_dir/spin.tty")<none>"
+out=$(spin 1 sh -c 'sleep 0.3; echo result; exit 3'); rc=$?
+tty_out=$(cat "$stub_dir/spin.tty")
+check    "on a terminal the output still passes through" "result" "$out"
+check_rc "and the exit code"                             3        "$rc"
+check    "the spinner sits where the mark goes"          "[dotfiles] fetching origin ⠋" "$tty_out"
+check    "and the line is cleared for the result"        $'\r\033[K' "$tty_out"
+refute   "none of it lands in the output"                "fetching" "$out"
+out=$(DEV_VERBOSE=1 spin 1 sh -c 'echo result')
+check    "-v turns the spinner off"                      "<none>" "$(cat "$stub_dir/spin.tty")<none>"
+
 echo "doctor: reading syncthing's folders"
 # The API pretty-prints ("fsWatcherEnabled": true), which the old grep for
 # "fsWatcherEnabled":true never matched. Fixtures are pretty-printed on purpose.

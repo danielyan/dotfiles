@@ -27,15 +27,61 @@ if folders:
 }
 _cf_field() { printf '%s\n' "$1" | awk -v k="$2" '$1 == k { print $2 }'; }
 
+# One check, one line: `[area] message ✓`, the mark last so the messages line
+# up after the tag, and a failure's remedy on the line below.
+#   _doctor_line <area> ok|warn|fail <message> [remedy]
+_doctor_line() {
+    local mark color
+    case "$2" in
+        ok)   mark='✓'; color=$C_OK ;;
+        warn) mark='➞'; color=$C_WARN ;;
+        *)    mark='✗'; color=$C_NO ;;
+    esac
+    printf '%s[%s]%s %s %s%s%s\n' "$C_DIM" "$1" "$C_OFF" "$3" "$color" "$mark" "$C_OFF"
+    [ -n "${4:-}" ] && printf '    %s→ %s%s\n' "$C_DIM" "$4" "$C_OFF"
+    return 0
+}
+
+# Run a slow check with a spinner where its mark will go, then clear the line
+# so the result prints in its place. The command's stdout and exit code pass
+# straight through, so it works inside $(...): the spinner goes to fd 4, the
+# terminal. Only on a terminal, and not under -v, whose debug lines would land
+# in the middle of it; otherwise the command just runs.
+#   _doctor_spin <area> <label> <command> [args...]
+_doctor_spin() {
+    local area=$1 label=$2; shift 2
+    if [ "${_DOCTOR_TTY:-0}" != 1 ] || [ "${DEV_VERBOSE:-0}" = 1 ]; then
+        "$@" 2>/dev/null; return
+    fi
+    local frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏) i=0 out pid rc
+    out=$(mktemp) || { "$@" 2>/dev/null; return; }
+    "$@" > "$out" 2>/dev/null &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        printf '\r%s[%s]%s %s %s%s%s' "$C_DIM" "$area" "$C_OFF" "$label" \
+            "$C_WARN" "${frames[i++ % ${#frames[@]}]}" "$C_OFF" >&4
+        sleep 0.1
+    done
+    wait "$pid"; rc=$?
+    printf '\r\033[K' >&4
+    cat "$out"; rm -f "$out"
+    return "$rc"
+}
+
 dev_doctor() {
-    local pass=0 warn=0 fail=0
-    _p() { ok "$1"; pass=$((pass+1)); }
-    _w() { maybe "$@"; warn=$((warn+1)); }
-    _f() { no "$@"; fail=$((fail+1)); }
+    local pass=0 warn=0 fail=0 area=""
+    # A blank line between areas, none before the first.
+    _area() { [ -n "$area" ] && echo; area=$1; }
+    local _DOCTOR_TTY=0
+    [ -t 1 ] && _DOCTOR_TTY=1
+    exec 4>&1
+    _p() { _doctor_line "$area" ok "$1"; pass=$((pass+1)); }
+    _w() { _doctor_line "$area" warn "$@"; warn=$((warn+1)); }
+    _f() { _doctor_line "$area" fail "$@"; fail=$((fail+1)); }
 
     local TS_CLI="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
 
-    section "Packages"
+    _area packages
     local pkg
     for pkg in tmux mosh syncthing atuin; do
         have "$pkg" && _p "$pkg" || _f "$pkg missing" "brew bundle --file=~/Brewfile"
@@ -43,11 +89,11 @@ dev_doctor() {
     [ -d /Applications/Tailscale.app ] && _p "Tailscale.app" \
         || _f "Tailscale.app missing" "brew bundle --file=~/Brewfile, then open it and sign in"
 
-    section "Dotfiles"
+    _area dotfiles
     if have yadm; then
         [ -z "$(yadm status --porcelain 2>/dev/null)" ] \
             && _p "yadm working tree clean" || _w "yadm has uncommitted changes" "yadm status"
-        yadm fetch --quiet 2>/dev/null
+        _doctor_spin "$area" "fetching origin" yadm fetch --quiet
         local behind ahead
         behind=$(yadm rev-list --count 'HEAD..@{u}' 2>/dev/null || echo 0)
         ahead=$(yadm rev-list --count '@{u}..HEAD' 2>/dev/null || echo 0)
@@ -58,16 +104,16 @@ dev_doctor() {
         _f "yadm missing" "brew install yadm"
     fi
 
-    section "Network"
+    _area network
     if [ -x "$TS_CLI" ]; then
-        "$TS_CLI" status >/dev/null 2>&1 && _p "Tailscale connected" \
+        _doctor_spin "$area" "checking Tailscale" "$TS_CLI" status >/dev/null 2>&1 && _p "Tailscale connected" \
             || _f "Tailscale not connected" "open -a Tailscale and sign in"
     else
         _f "Tailscale CLI not found" "install Tailscale.app"
     fi
 
     if is_server; then
-        section "Server role"
+        _area server
         _p "configured as always-on (pmset sleep 0)"
         local n
         n=$(tmux ls 2>/dev/null | wc -l | tr -d ' ')
@@ -76,7 +122,8 @@ dev_doctor() {
 
         local vault="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Notes"
         if [ -d "$vault" ]; then
-            if find "$vault" -name '*.icloud' -print -quit 2>/dev/null | grep -q .; then
+            if _doctor_spin "$area" "looking for evicted vault files" \
+                    find "$vault" -name '*.icloud' -print -quit | grep -q .; then
                 _w "vault has evicted (placeholder) files" "brctl download \"$vault\""
             else
                 _p "vault fully materialised locally"
@@ -85,18 +132,19 @@ dev_doctor() {
             _w "vault not present" "sign into iCloud and wait for sync"
         fi
     else
-        section "Reaching the Mini"
+        _area mini
         grep -q "config.mini" "$HOME/.ssh/config" 2>/dev/null \
             && _p "~/.ssh/config includes config.mini" \
             || _f "~/.ssh/config does not include config.mini" "yadm bootstrap"
 
-        if reachable; then
+        if _doctor_spin "$area" "reaching $DEV_HOST" reachable; then
             _p "ssh $DEV_HOST"
 
             # The silent killer: Claude keys session dirs on $HOME, so a
             # different username means transcripts never line up.
             local remote_user
-            remote_user=$(ssh -o BatchMode=yes "$DEV_HOST" 'whoami' 2>/dev/null)
+            remote_user=$(_doctor_spin "$area" "comparing usernames" \
+                ssh -o BatchMode=yes "$DEV_HOST" 'whoami')
             if [ "$remote_user" = "$(whoami)" ]; then
                 _p "username matches on both machines ($remote_user)"
             else
@@ -104,16 +152,19 @@ dev_doctor() {
                    "Claude session dirs are keyed on \$HOME; transcripts will NOT line up"
             fi
 
-            if ssh -o BatchMode=yes "$DEV_HOST" 'command -v tmux' >/dev/null 2>&1; then
+            if _doctor_spin "$area" "looking for tmux on $DEV_HOST" \
+                    ssh -o BatchMode=yes "$DEV_HOST" 'command -v tmux' >/dev/null 2>&1; then
                 local sessions
-                sessions=$(ssh -o BatchMode=yes "$DEV_HOST" 'tmux ls 2>/dev/null | wc -l' 2>/dev/null | tr -d ' ')
+                sessions=$(_doctor_spin "$area" "counting sessions on $DEV_HOST" \
+                    ssh -o BatchMode=yes "$DEV_HOST" 'tmux ls 2>/dev/null | wc -l' | tr -d ' ')
                 _p "tmux on mini (${sessions:-0} session(s))"
             else
                 _f "tmux not installed on mini" "dev run brew install tmux"
             fi
 
             if have mosh; then
-                ssh -o BatchMode=yes "$DEV_HOST" 'command -v mosh-server' >/dev/null 2>&1 \
+                _doctor_spin "$area" "looking for mosh-server on $DEV_HOST" \
+                    ssh -o BatchMode=yes "$DEV_HOST" 'command -v mosh-server' >/dev/null 2>&1 \
                     && _p "mosh available on both ends" \
                     || _w "mosh-server missing on mini" "dev run brew install mosh"
             fi
@@ -122,19 +173,21 @@ dev_doctor() {
         fi
     fi
 
-    section "Claude state sync"
+    _area claude-sync
     [ -f "$HOME/.claude/.stignore" ] && _p "~/.claude/.stignore present" \
         || _f "~/.claude/.stignore missing" "yadm checkout .claude/.stignore"
 
     if have syncthing; then
-        if curl -sf -m 3 -o /dev/null "$SYNCTHING_API/rest/noauth/health"; then
+        if _doctor_spin "$area" "asking syncthing" \
+                curl -sf -m 3 -o /dev/null "$SYNCTHING_API/rest/noauth/health"; then
             _p "syncthing running"
             local apikey
             apikey=$(sed -n 's:.*<apikey>\(.*\)</apikey>.*:\1:p' \
                 "$HOME/Library/Application Support/Syncthing/config.xml" 2>/dev/null | head -1)
             if [ -n "$apikey" ]; then
                 local report count
-                report=$(curl -sf -m 5 -H "X-API-Key: $apikey" "$SYNCTHING_API/rest/config/folders" 2>/dev/null \
+                report=$(_doctor_spin "$area" "reading syncthing's folders" \
+                         curl -sf -m 5 -H "X-API-Key: $apikey" "$SYNCTHING_API/rest/config/folders" \
                          | _claude_folders 2>/dev/null)
                 count=$(_cf_field "$report" count)
                 debug "syncthing folders for ~/.claude: $(printf '%s' "$report" | tr '\n' ' ')"
@@ -149,7 +202,8 @@ dev_doctor() {
                 fi
 
                 local devices
-                devices=$(curl -sf -m 5 -H "X-API-Key: $apikey" "$SYNCTHING_API/rest/config/devices" 2>/dev/null \
+                devices=$(_doctor_spin "$area" "reading syncthing's devices" \
+                          curl -sf -m 5 -H "X-API-Key: $apikey" "$SYNCTHING_API/rest/config/devices" \
                           | grep -o '"deviceID"' | wc -l | tr -d ' ')
                 [ "${devices:-0}" -gt 1 ] && _p "syncthing paired with ${devices} device(s) incl. self" \
                     || _f "no peer device paired" "pair the other machine at $SYNCTHING_API"
@@ -173,12 +227,13 @@ dev_doctor() {
     fi
 
     local conflicts
-    conflicts=$(find "$HOME/.claude" -name '*sync-conflict*' 2>/dev/null | wc -l | tr -d ' ')
+    conflicts=$(_doctor_spin "$area" "looking for sync conflicts" \
+        find "$HOME/.claude" -name '*sync-conflict*' | wc -l | tr -d ' ')
     [ "${conflicts:-0}" -gt 0 ] \
         && _w "$conflicts syncthing conflict file(s) in ~/.claude" "keep the larger, delete the rest" \
         || _p "no sync conflicts"
 
-    section "Shell"
+    _area shell
     if have atuin; then
         if [ -f "$HOME/.local/share/atuin/session" ]; then
             _p "atuin logged in"

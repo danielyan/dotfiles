@@ -224,12 +224,12 @@ Checks every link and prints the exact remedy for anything broken. Read-only and
 safe to run at any time; exits non-zero if any check failed.
 
 ```
-Packages
-  ✗ tmux missing
-      → brew bundle --file=~/Brewfile
-Reaching the Mini
-  ✗ cannot ssh to 'mini'
-      → check Tailscale on both ends; is the Mini awake?
+[packages] tmux missing ✗
+    → brew bundle --file=~/Brewfile
+[packages] mosh ✓
+
+[mini] cannot ssh to 'mini' ✗
+    → check Tailscale on both ends; is the Mini awake?
 ```
 
 The check worth knowing about is **username match**. It compares `whoami` on
