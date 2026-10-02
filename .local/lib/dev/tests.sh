@@ -47,8 +47,8 @@ cd "$stub_dir" || exit 1
 
 echo "dispatch"
 out=$("$DEV" help 2>&1);            check "help lists subcommands" "dev preflight" "$out"
-out=$("$DEV" bogus 2>&1); rc=$?;    check "a non-command is a session" "tmux new -A -s bogus" "$out"
-check_rc "and attaching exits 0" 0 "$rc"
+out=$("$DEV" bogus 2>&1); rc=$?;    check "a non-command is a session" "no session 'bogus' on mini" "$out"
+check_rc "and a missing one exits 1" 1 "$rc"
 out=$("$DEV" -x 2>&1); rc=$?;       check "an unknown option is refused" "unknown option '-x'" "$out"
 check_rc "and exits 1" 1 "$rc"
 
@@ -135,6 +135,23 @@ check  "nothing may follow the name"         "takes nothing after the name" "$ou
 check_rc "exits 1"                           1 "$rc"
 refute "a command is still a command"        "tmux new" "$(C ls)"
 
+echo "matching what was typed"
+M() { bash -c '. "$HOME/.local/lib/dev/_match.sh"; "$@"' _ "$@"; }
+check "a swap of neighbours is one edit"    "1" "$(M _distance magpei magpie)"
+check "a missing letter is one"             "1" "$(M _distance doctr doctor)"
+check "the same word is none"               "0" "$(M _distance main main)"
+check "and kitten/sitting is the classic 3" "3" "$(M _distance kitten sitting)"
+check "short words get one slip"            "1" "$(M _typo_limit ls)"
+check "longer ones two"                     "2" "$(M _typo_limit magpie)"
+check "the same word, any case, comes first" "magpie" "$(M _best_matches MAGPIE magpie magpie-old)"
+check "then a start"                        $'magpie\nmaps' "$(M _best_matches ma magpie maps fresco)"
+check "then anywhere in it"                 "my_fresco" "$(M _best_matches resc main my_fresco)"
+check "then the closest typo"               "magpie" "$(M _best_matches magpei main magpie fresco)"
+check "only at the smallest distance"       "fresco" "$(M _best_matches fresko fresco frisks)"
+out=$(M _best_matches zzzz main magpie); rc=$?
+check "nothing close prints nothing"        "<none>" "${out}<none>"
+check_rc "and fails"                        1 "$rc"
+
 echo "connect: a near-miss of a command is a typo, unless that session exists"
 running main
 out=$(C doctr); rc=$?
@@ -144,6 +161,34 @@ check_rc "exits 1"                           1 "$rc"
 refute "and attaches nothing"                "MOSH_ARGS" "$out"
 running main doctr
 check  "an existing session by that name is attached" "tmux new -A -s doctr" "$(C doctr)"
+running main
+check  "a swapped pair in a command is a typo too" "did you mean 'dev doctor'" "$(C dcotor)"
+
+echo "connect: dev <name> finds the session meant"
+running main magpie fresco
+out=$(C magpei)
+check  "a typo attaches the session meant" "tmux new -A -s magpie" "$out"
+check  "and says which"                    "magpei → magpie" "$out"
+check  "so does another case"              "tmux new -A -s magpie" "$(C MagPie)"
+check  "and the start of a name"           "tmux new -A -s magpie" "$(C mag)"
+running "main|0" "magpie|1" "maps|0"
+out=$(C ma); rc=$?
+check  "a name several could mean lists them" "'ma' could be any of: main magpie maps" "$out"
+check_rc "and exits 1 without a terminal"  1 "$rc"
+refute "attaching nothing"                 "MOSH_ARGS" "$out"
+keys '\033[B\n'; out=$(DEV_TTY="$cs/keys" C ma)
+check  "on a terminal they are picked from" "tmux new -A -s magpie" "$out"
+check  "and only they are listed"          "'ma' could be any of these:" "$out"
+running
+out=$(C main)
+check  "main is started when it is not running" "tmux new -A -s main" "$out"
+refute "without asking"                    "Start it" "$out"
+check  "in any case"                       "tmux new -A -s main" "$(C Main)"
+running main
+keys 'y\n'; out=$(DEV_TTY="$cs/keys" C fresko)
+check  "a missing session finds the project meant" "Start 'fresco' in $DEV_PROJECTS_DIR/fresco? [y/N]" "$out"
+check  "and starts it there"               "tmux new -A -s fresco -c $DEV_PROJECTS_DIR/fresco" "$out"
+check  "without a terminal it names the project" "run dev fresco in a terminal" "$(C fresko)"
 
 echo "connect: dev connect picks from a list"
 check  "the filter matches anywhere, any case" $'fresco|1\nmy_fresh|0' \
@@ -162,6 +207,11 @@ check  "and up moves it back"            "tmux new -A -s fresco" "$(pick '\033[B
 check  "it stops at the last"            "tmux new -A -s magpie" "$(pick '\033[B\033[B\033[B\033[B\n')"
 check  "ctrl-n moves down too"           "tmux new -A -s fresco" "$(pick '\016\n')"
 check  "typing filters"                  "tmux new -A -s magpie" "$(pick 'mag\n')"
+check  "letters in order find it too"    "tmux new -A -s magpie" "$(pick 'mgp\n')"
+check  "after the plain matches" $'fresco|1\nmy_fresh|0\nfaraway_resco|0' \
+    "$(bash -c '. "$HOME/.local/lib/dev/connect.sh"; _filter_sessions fres "faraway_resco|0" "fresco|1" "my_fresh|0"')"
+check  "a typed * is only a star"        "a*b|0" \
+    "$(bash -c '. "$HOME/.local/lib/dev/connect.sh"; _filter_sessions "a*" "a*b|0" "axb|0"')"
 check  "in any case"                     "tmux new -A -s magpie" "$(pick 'MAG\n')"
 check  "backspace widens it again"       "tmux new -A -s fresco" "$(pick 'zz\177\177fr\n')"
 out=$(pick 'zzz\n'); rc=$?
@@ -602,7 +652,11 @@ cat > "$vb/ssh" <<STUB
 #!/usr/bin/env bash
 for a in "\$@"; do [ "\$a" = true ] && exit 0; done
 case "\$*" in *"has-session -t =magpie"*) exit 0 ;; *has-session*) exit 1 ;; esac
-[ "\${*: -1}" = "bash -ls" ] && { printf 'SSH_STDIN: %s\n' "\$(cat)"; exit 0; }
+if [ "\${*: -1}" = "bash -ls" ]; then
+    in=\$(cat)
+    case "\$in" in *"tmux ls"*) echo "magpie|0" ;; *) printf 'SSH_STDIN: %s\n' "\$in" ;; esac
+    exit 0
+fi
 echo "SSH_ARGS: \$*"
 STUB
 printf '#!/usr/bin/env bash\necho "MOSH_ARGS: $*"\n' > "$vb/mosh"

@@ -108,7 +108,8 @@ ${C_BOLD}dev${C_OFF} — control the always-on Mac Mini
 
   ${C_BOLD}dev${C_OFF}                     the session named after this folder (in ~/projects/<p>:
                           <p>) if it is running, otherwise '$DEV_SESSION'
-  ${C_BOLD}dev${C_OFF} <name>              attach to the <name> session; offers to start a missing one
+  ${C_BOLD}dev${C_OFF} <name>              attach to <name>, typos and partial names too (magpei, mag);
+                          offers to start a missing one. main just starts
   ${C_BOLD}dev connect${C_OFF}             pick a running session: type to filter, ↑↓, enter
   ${C_BOLD}dev ls${C_OFF}                  list sessions without attaching
   ${C_BOLD}dev run${C_OFF} <command>       run one command remotely, no session
@@ -163,25 +164,18 @@ case "$cmd" in
     -h|--help|help) usage; exit 0 ;;
 esac
 
+[ -f "$DEV_LIB/_match.sh" ] || die "missing $DEV_LIB/_match.sh (try: yadm pull)"
+# shellcheck source=/dev/null
+. "$DEV_LIB/_match.sh"
+
 # The command closest to $1, if it is close enough to be a typo of it.
 _near_command() {
-    local c best="" best_d=99 d limit
+    local c best="" best_d=99 d
     for c in $COMMANDS; do
-        d=$(awk -v a="$1" -v b="$c" 'BEGIN {
-            la = length(a); lb = length(b)
-            for (i = 0; i <= la; i++) m[i, 0] = i
-            for (j = 0; j <= lb; j++) m[0, j] = j
-            for (i = 1; i <= la; i++) for (j = 1; j <= lb; j++) {
-                x = m[i-1, j] + 1; y = m[i, j-1] + 1
-                z = m[i-1, j-1] + (substr(a, i, 1) != substr(b, j, 1))
-                m[i, j] = (x < y ? (x < z ? x : z) : (y < z ? y : z))
-            }
-            print m[la, lb] }')
+        d=$(_distance "$1" "$c")
         [ "$d" -lt "$best_d" ] && { best=$c; best_d=$d; }
     done
-    # Short commands tolerate one slip, longer ones two.
-    limit=2; [ ${#best} -le 4 ] && limit=1
-    [ "$best_d" -le "$limit" ] && printf '%s' "$best"
+    [ "$best_d" -le "$(_typo_limit "$best")" ] && printf '%s' "$best"
 }
 
 _session_exists() {

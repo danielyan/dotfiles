@@ -7,13 +7,16 @@
 #   dev                    the session named after the folder you are in, if one
 #                          is running: in ~/projects/<p>/..., <p>; elsewhere the
 #                          folder's own name. Otherwise main, started if need be
-#   dev <name>             the <name> session; a missing one is not started
-#                          silently: dev says so and, on a terminal, offers to
+#   dev <name>             the <name> session. Typos and partial names find the
+#                          running session meant (magpei, mag → magpie); a name
+#                          several could mean opens the picker with just those.
+#                          A missing session is not started silently: dev says
+#                          so and, on a terminal, offers to (fresko → fresco, if
+#                          ~/projects/fresco exists). main always just starts
 #   dev connect            pick a running session: type to filter, arrows to
 #                          move, enter to attach, esc to cancel
 #
-# Only two things start a session: `dev` falling back to main, and a yes to the
-# offer. A session started for a project begins in ~/projects/<name>; the path
+# Only main, and a yes to the offer, start a session. A session started for a project begins in ~/projects/<name>; the path
 # is the same on both machines (same username, and `dev repos` clones the same
 # repos).
 
@@ -102,25 +105,80 @@ _connect_here() {
     _attach "$DEV_SESSION"
 }
 
-# `dev <name>`: that session, or say it is missing and offer to start it.
+# The project folders, by name: what a session could be started for.
+_projects() {
+    local d
+    for d in "$DEV_PROJECTS_DIR"/*/; do
+        [ -d "$d" ] && { d=${d%/}; printf '%s\n' "${d##*/}"; }
+    done
+}
+
+# `dev <name>`: that session, or the running one it most plausibly means;
+# failing that, say it is missing and offer to start it.
 _connect_named() {
-    local session answer dir
+    local session answer dir entries=() names=() matches=() entry name
     is_server || require_reachable
     session=$(session_name "$1")
     [ "$session" != "$1" ] \
         && debug "renamed '$1' to '$session': names keep to letters, digits, _ and -"
-    if _session_exists "$session"; then
-        debug "'$session' exists on $DEV_HOST: attaching"
+    if [ "$(printf '%s' "$session" | tr '[:upper:]' '[:lower:]')" = "$DEV_SESSION" ]; then
+        session=$DEV_SESSION
+        debug "'$session' is the default session: attaching, starting it if need be"
         _attach "$session"
     fi
 
+    while IFS= read -r entry; do
+        [ -n "$entry" ] && { entries+=("$entry"); names+=("${entry%%|*}"); }
+    done < <(_sessions)
+    for name in ${names[@]+"${names[@]}"}; do
+        [ "$name" = "$session" ] && { debug "'$session' exists on $DEV_HOST: attaching"; _attach "$session"; }
+    done
+
+    while IFS= read -r name; do matches+=("$name"); done \
+        < <(_best_matches "$1" ${names[@]+"${names[@]}"})
+    debug "running sessions close to '$1': ${matches[*]:-none}"
+    if [ "${#matches[@]}" -eq 1 ]; then
+        printf '%s%s → %s%s\n' "$C_DIM" "$1" "${matches[0]}" "$C_OFF" >&2
+        _attach "${matches[0]}"
+    elif [ "${#matches[@]}" -gt 1 ]; then
+        if _interactive; then
+            local close=()
+            for entry in "${entries[@]}"; do
+                for name in "${matches[@]}"; do
+                    [ "${entry%%|*}" = "$name" ] && close+=("$entry")
+                done
+            done
+            printf "%s'%s' could be any of these:%s\n" "$C_WARN" "$1" "$C_OFF" >&2
+            name=$(_pick "${close[@]}") || exit 1
+            _attach "$name"
+        fi
+        printf "%s'%s' could be any of: %s%s\n" "$C_WARN" "$1" "${matches[*]}" "$C_OFF" >&2
+        printf '  %s→ dev %s%s\n' "$C_DIM" "${matches[0]}" "$C_OFF" >&2
+        exit 1
+    fi
+
     printf "%sno session '%s' on %s%s\n" "$C_WARN" "$session" "$DEV_HOST" "$C_OFF" >&2
+    # Not running, so maybe a project that could be: the one folder it means.
+    local folders=() projects=() project=""
+    while IFS= read -r name; do folders+=("$name"); done < <(_projects)
+    while IFS= read -r name; do projects+=("$name"); done \
+        < <(_best_matches "$1" ${folders[@]+"${folders[@]}"})
+    if [ "${#projects[@]}" -eq 1 ] && [ "${projects[0]}" != "$1" ]; then
+        project=${projects[0]}
+        debug "'$1' is close to the project folder '$project'"
+        set -- "$project"
+        session=$(session_name "$project")
+    fi
     dir=$(_start_dir "$1" "$session")
     if ! _interactive; then
         printf '  %s→ run dev %s in a terminal to start it%s\n' "$C_DIM" "$1" "$C_OFF" >&2
         exit 1
     fi
-    printf 'Start it%s? [y/N] ' "${dir:+ in $dir}" >&2
+    if [ -n "$project" ]; then
+        printf "Start '%s'%s? [y/N] " "$session" "${dir:+ in $dir}" >&2
+    else
+        printf 'Start it%s? [y/N] ' "${dir:+ in $dir}" >&2
+    fi
     IFS= read -r answer < "$(_tty)" || answer=""
     case "$answer" in
         y|Y|yes|Yes) debug "starting '$session'${dir:+ in $dir}"; _attach "$session" "$dir" ;;
@@ -128,14 +186,22 @@ _connect_named() {
     exit 1
 }
 
-# The entries whose session name contains <filter>, ignoring case.
+# The entries whose session name contains <filter>, then those that have its
+# letters in order with gaps between (mgp finds magpie), ignoring case.
 _filter_sessions() { # <filter> <name|attached>...
-    local filter=$1 entry restore
+    local filter=$1 entry restore spread="*" i
     shift
+    # Each letter escaped, so a typed * or [ is only itself.
+    for ((i = 0; i < ${#filter}; i++)); do spread+="\\${filter:i:1}*"; done
     restore=$(shopt -p nocasematch)
     shopt -s nocasematch
     for entry in "$@"; do
         [[ "${entry%%|*}" == *"$filter"* ]] && printf '%s\n' "$entry"
+    done
+    for entry in "$@"; do
+        [[ "${entry%%|*}" == *"$filter"* ]] && continue
+        # shellcheck disable=SC2053 # the pattern is the point
+        [[ "${entry%%|*}" == $spread ]] && printf '%s\n' "$entry"
     done
     eval "$restore"
 }
