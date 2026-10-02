@@ -51,8 +51,8 @@ abbr --add l ls -la --color | awk '{k=0;for(i=0;i<=8;i++)k+=((substr($1,i+2,1)~/
 abbr --add reset_fcp mv -v "~/Library/Containers/com.apple.FinalCutTrial/Data/Library/Application\ Support/.ffuserdata" ~/.Trash
 
 abbr --add yt --position anywhere --set-cursor "yt-dlp \"%\""
-export PATH="$HOME/.local/bin:$PATH"
 fish_add_path $HOME/bin
+fish_add_path --move $HOME/.local/bin
 
 #------ atuin: shell history shared across machines
 if status is-interactive; and command -q atuin
