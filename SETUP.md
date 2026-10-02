@@ -220,7 +220,9 @@ this doc.
 
 | | |
 |---|---|
-| `dev` | Attach to the `main` session |
+| `dev` | This folder's session if it is running, else `main` |
+| `dev <name>` | That session; offers to start it if it is missing |
+| `dev connect` | Pick a session from a filterable list |
 | `dev ls` | What's running, without attaching |
 | `dev run <cmd>` | One command remotely |
 | `dev status` | Fast health check |

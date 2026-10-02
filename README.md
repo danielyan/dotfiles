@@ -186,9 +186,9 @@ works over ssh, in any shell, and on a machine that hasn't been configured yet.
 
 | Command | Does |
 |---|---|
-| `dev` | In `~/projects/<p>`: the `<p>` session, started in that folder. Anywhere else: `main` |
-| `dev <name>` | Attach to, or create, the `<name>` session (a project's starts in its folder) |
-| `dev connect [name]` | The same, spelled out; also for a session whose name is a command |
+| `dev` | The session named after this folder (in `~/projects/<p>`: `<p>`) if it is running; otherwise `main`, started if need be |
+| `dev <name>` | Attach to the `<name>` session. A missing one is not started silently: `dev` says so and offers to (a project's starts in its folder) |
+| `dev connect` | Pick a running session from a list: type to filter, ↑↓ to move, enter to attach, esc to cancel |
 | `dev ls` | List sessions without attaching |
 | `dev run <cmd>` | Run one command remotely and come straight back |
 | `dev shell` | A plain login shell, no tmux |
@@ -206,15 +206,18 @@ defining a `dev_<name>` function. Adding a subcommand means adding a file.
 
 Two behaviours worth knowing:
 
-- **It knows which machine it's on.** On the Mini, `dev connect` attaches to a
+- **It knows which machine it's on.** On the Mini, `dev` attaches to a
   local tmux session rather than ssh-ing to itself, and `dev run` just runs the
   command. `doctor` checks the Mini for live sessions and iCloud eviction, and
   the Air for whether it can reach the Mini at all.
+- **Only two things start a session**: `dev` falling back to `main`, and a yes
+  when `dev <name>` offers to start a missing one. Everything else attaches.
 - **Anything that is not a command is a session name**, but a near-miss of a
   command is treated as a typo: `dev doctr` asks whether you meant `dev doctor`
-  unless a session called `doctr` already exists (`dev connect doctr` starts one
-  anyway). Names keep to letters, digits, `_` and `-`; anything else becomes `_`,
-  since tmux reads `.` and `:` in a target as separators.
+  unless a session called `doctr` already exists. A session whose name is a
+  command is still one pick away in `dev connect`. Names keep to letters,
+  digits, `_` and `-`; anything else becomes `_`, since tmux reads `.` and `:` in
+  a target as separators.
 
 `$DEV_HOST` overrides the target host, `$DEV_SESSION` the default session.
 

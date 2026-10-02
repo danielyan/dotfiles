@@ -106,10 +106,10 @@ usage() {
     cat <<USAGE
 ${C_BOLD}dev${C_OFF} — control the always-on Mac Mini
 
-  ${C_BOLD}dev${C_OFF}                     in ~/projects/<p>: the <p> session, started there;
-                          anywhere else: the '$DEV_SESSION' session
-  ${C_BOLD}dev${C_OFF} <name>              attach to, or create, the <name> session
-  ${C_BOLD}dev connect${C_OFF} [name]      the same, spelled out (and for names that are commands)
+  ${C_BOLD}dev${C_OFF}                     the session named after this folder (in ~/projects/<p>:
+                          <p>) if it is running, otherwise '$DEV_SESSION'
+  ${C_BOLD}dev${C_OFF} <name>              attach to the <name> session; offers to start a missing one
+  ${C_BOLD}dev connect${C_OFF}             pick a running session: type to filter, ↑↓, enter
   ${C_BOLD}dev ls${C_OFF}                  list sessions without attaching
   ${C_BOLD}dev run${C_OFF} <command>       run one command remotely, no session
   ${C_BOLD}dev shell${C_OFF}               a plain login shell, no tmux
@@ -153,7 +153,10 @@ if [ "$DEV_VERBOSE" = 1 ]; then
     unset _sleep
 fi
 
+# No arguments: this folder's session, else main (connect.sh's _connect_here).
 cmd="${1:-connect}"
+fn="dev_$cmd"
+[ $# -eq 0 ] && fn=_connect_here
 [ $# -gt 0 ] && shift
 
 case "$cmd" in
@@ -194,9 +197,10 @@ if ! printf '%s\n' $COMMANDS | grep -qx "$cmd"; then
     case "$cmd" in
         -*) die "unknown option '$cmd' (dev help)" ;;
     esac
-    # Not a command, so a session: `dev magpie` is `dev connect magpie`. A
-    # near-miss of a command is likelier a typo than a new session, so it
-    # only counts as a session when one by that name already exists.
+    # Not a command, so a session: `dev magpie` attaches to magpie. A
+    # near-miss of a command is likelier a typo than a session, so it only
+    # counts as one when a session by that name exists; otherwise dev would
+    # offer to start a session nobody meant.
     near=$(_near_command "$cmd")
     if [ -n "$near" ]; then
         debug "'$cmd' is close to the command '$near': a session only if one by that name exists"
@@ -204,13 +208,15 @@ if ! printf '%s\n' $COMMANDS | grep -qx "$cmd"; then
         debug "'$cmd' is not a command, so it names a session"
     fi
     if [ -n "$near" ] && ! _session_exists "$cmd"; then
-        die "'$cmd' is not a command or a session — did you mean 'dev $near'? (to start a session called '$cmd': dev connect $cmd)"
+        die "'$cmd' is not a command or a session — did you mean 'dev $near'?"
     fi
-    set -- "$cmd" "$@"
+    [ $# -eq 0 ] || die "dev <name> takes nothing after the name (dev help)"
+    set -- "$cmd"
     cmd=connect
+    fn=_connect_named
 fi
 
 [ -f "$DEV_LIB/$cmd.sh" ] || die "missing $DEV_LIB/$cmd.sh (try: yadm pull)"
 # shellcheck source=/dev/null
 . "$DEV_LIB/$cmd.sh"
-"dev_$cmd" "$@"
+"$fn" "$@"

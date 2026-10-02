@@ -3,7 +3,7 @@
 set -l cmds connect doctor preflight land pair ls run shell status repos help
 
 complete -c dev -f
-complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a connect   -d "attach to a session, by name"
+complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a connect   -d "pick a session from a list"
 complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a ls        -d "list sessions without attaching"
 complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a run       -d "run one command remotely"
 complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a shell     -d "plain login shell, no tmux"
@@ -31,8 +31,6 @@ end
 # `dev <name>` attaches to a session, so names complete where commands do.
 complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a "(__dev_sessions)" -d session
 complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a "(__dev_projects)" -d project
-complete -c dev -n "__fish_seen_subcommand_from connect" -a "(__dev_sessions)" -d session
-complete -c dev -n "__fish_seen_subcommand_from connect" -a "(__dev_projects)" -d project
 
 # dev repos <sub>
 set -l repos_subs list add remove sync status help

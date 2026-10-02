@@ -64,56 +64,122 @@ check "run quotes shell metacharacters" "\;" "$out"
 out=$("$DEV" run 2>&1); rc=$?;      check_rc "run with no args exits 1" 1 "$rc"
 check "run with no args explains usage" "usage: dev run" "$out"
 
-echo "connect"
-out=$("$DEV" connect 2>&1);         check "connect prefers mosh" "MOSH_ARGS" "$out"
-check "connect attaches-or-creates" "tmux new -A -s main" "$out"
-out=$("$DEV" connect scratch 2>&1); check "connect honours a session name" "tmux new -A -s scratch" "$out"
-out=$(DEV_HOST=elsewhere "$DEV" connect 2>&1)
-check "DEV_HOST is respected" "elsewhere" "$out"
-
-echo "sessions by name, and by folder"
-mkdir -p "$DEV_PROJECTS_DIR/fresco/Sources" "$DEV_PROJECTS_DIR/my.proj"
-out=$(cd "$DEV_PROJECTS_DIR/fresco/Sources" && "$DEV" 2>&1)
-check "dev in a project is that project's session" "tmux new -A -s fresco" "$out"
-check "started in the project folder" "-c $DEV_PROJECTS_DIR/fresco" "$out"
-out=$(cd "$DEV_PROJECTS_DIR" && "$DEV" 2>&1)
-check "the projects folder itself is main" "tmux new -A -s main" "$out"
-refute "with no start folder" " -c " "$out"
-out=$("$DEV" 2>&1)
-check "dev elsewhere is main" "tmux new -A -s main" "$out"
-out=$("$DEV" fresco 2>&1)
-check "dev <project> starts in the project too" "-s fresco -c $DEV_PROJECTS_DIR/fresco" "$out"
-out=$("$DEV" magpie 2>&1)
-check "a name with no folder is just a session" "tmux new -A -s magpie" "$out"
-refute "with no start folder" " -c " "$out"
-out=$("$DEV" my.proj 2>&1)
-check "dots become underscores" "-s my_proj" "$out"
-refute "and a changed name gets no folder" " -c " "$out"
-out=$("$DEV" "two words" 2>&1)
-check "so do spaces" "-s two_words" "$out"
-out=$("$DEV" connect run 2>&1)
-check "connect takes a name that is a command" "tmux new -A -s run" "$out"
-out=$("$DEV" ls 2>&1)
-refute "a command is still a command" "tmux new" "$out"
-
-echo "a near-miss of a command is a typo, unless that session exists"
-typo=$(mktemp -d)
-cat > "$typo/ssh" <<STUB
+echo "connect: the stubbed Mini"
+# Sessions "running" on the stubbed Mini are lines of $cs/running, as
+# name|attached-clients: has-session and `tmux ls` both answer from it.
+cs=$(mktemp -d)
+cat > "$cs/ssh" <<STUB
 #!/usr/bin/env bash
 for a in "\$@"; do [ "\$a" = true ] && exit 0; done
-case "\$*" in *"has-session -t =doctr"*) [ -f "$typo/exists" ]; exit \$? ;; esac
+case "\$*" in *"has-session -t ="*)
+    all="\$*"; name=\${all##*has-session -t =}; name=\${name%% *}
+    cut -d'|' -f1 "$cs/running" | grep -qx -- "\$name"; exit \$? ;;
+esac
+if [ "\${*: -1}" = "bash -ls" ]; then
+    case "\$(cat)" in *"tmux ls"*) cat "$cs/running" ;; esac
+    exit 0
+fi
 echo "SSH_ARGS: \$*"
 STUB
-chmod +x "$typo/ssh"
-out=$(PATH="$typo:$PATH" "$DEV" doctr 2>&1); rc=$?
-check "suggests the command" "did you mean 'dev doctor'" "$out"
-check "and how to start the session anyway" "dev connect doctr" "$out"
-check_rc "exits 1" 1 "$rc"
-refute "and attaches nothing" "MOSH_ARGS" "$out"
-touch "$typo/exists"
-out=$(PATH="$typo:$PATH" "$DEV" doctr 2>&1)
-check "an existing session by that name is attached" "tmux new -A -s doctr" "$out"
-rm -rf "$typo"
+printf '#!/usr/bin/env bash\necho "MOSH_ARGS: $*"\n' > "$cs/mosh"
+chmod +x "$cs/ssh" "$cs/mosh"
+running() { : > "$cs/running"; local s; for s; do printf '%s\n' "$s" >> "$cs/running"; done; }
+C() { PATH="$cs:$PATH" "$DEV" "$@" 2>&1; }
+keys() { printf "$1" > "$cs/keys"; }      # what the "terminal" types next
+mkdir -p "$DEV_PROJECTS_DIR/fresco/Sources" "$DEV_PROJECTS_DIR/my.proj" "$cs/scratch" "$cs/home"
+check "connect prefers mosh" "MOSH_ARGS" "$(running main; C)"
+check "DEV_HOST is respected" "elsewhere" "$(running main; PATH="$cs:$PATH" DEV_HOST=elsewhere "$DEV" 2>&1)"
+
+echo "connect: dev"
+running main fresco
+out=$(cd "$DEV_PROJECTS_DIR/fresco/Sources" && C)
+check  "in a project, its running session" "tmux new -A -s fresco" "$out"
+refute "attaching, so no start folder"      " -c " "$out"
+running main
+out=$(cd "$DEV_PROJECTS_DIR/fresco" && C)
+check  "a project with no session gets main" "tmux new -A -s main" "$out"
+refute "and its session is not started"      "-s fresco" "$out"
+running main scratch
+check  "outside projects, the folder's own name" "tmux new -A -s scratch" "$(cd "$cs/scratch" && C)"
+running main projects
+check  "the projects folder itself is main" "tmux new -A -s main" "$(cd "$DEV_PROJECTS_DIR" && C)"
+running main home
+check  "and so is home" "tmux new -A -s main" "$(cd "$cs/home" && DEV_LIB="$HOME/.local/lib/dev" HOME="$cs/home" C)"
+running
+check  "with nothing running, main is started" "tmux new -A -s main" "$(cd "$cs/scratch" && C)"
+
+echo "connect: dev <name>"
+running main magpie two_words
+check  "a running session is attached" "tmux new -A -s magpie" "$(C magpie)"
+check  "names are cleaned the same way" "tmux new -A -s two_words" "$(C "two words")"
+out=$(C fresco); rc=$?
+check  "a missing one is reported"          "no session 'fresco' on mini" "$out"
+check  "with how to start it"               "run dev fresco in a terminal to start it" "$out"
+check_rc "and exits 1"                      1 "$rc"
+refute "without starting it"                "MOSH_ARGS" "$out"
+keys 'y\n'; out=$(DEV_TTY="$cs/keys" C fresco)
+check  "on a terminal it offers to start it" "Start it in $DEV_PROJECTS_DIR/fresco? [y/N]" "$out"
+check  "and yes starts it in the project"    "tmux new -A -s fresco -c $DEV_PROJECTS_DIR/fresco" "$out"
+keys 'n\n'; out=$(DEV_TTY="$cs/keys" C fresco); rc=$?
+refute "no leaves it alone"                  "MOSH_ARGS" "$out"
+check_rc "and exits 1"                       1 "$rc"
+keys '\n'; refute "so does just enter"       "MOSH_ARGS" "$(DEV_TTY="$cs/keys" C fresco)"
+keys 'y\n'; out=$(DEV_TTY="$cs/keys" C scratchpad)
+check  "a name with no folder starts plain"  "tmux new -A -s scratchpad" "$out"
+refute "with no start folder"                " -c " "$out"
+keys 'y\n'; out=$(DEV_TTY="$cs/keys" C my.proj)
+check  "dots become underscores"             "-s my_proj" "$out"
+refute "and a changed name gets no folder"   " -c " "$out"
+out=$(C magpie extra); rc=$?
+check  "nothing may follow the name"         "takes nothing after the name" "$out"
+check_rc "exits 1"                           1 "$rc"
+refute "a command is still a command"        "tmux new" "$(C ls)"
+
+echo "connect: a near-miss of a command is a typo, unless that session exists"
+running main
+out=$(C doctr); rc=$?
+check  "suggests the command"                "did you mean 'dev doctor'" "$out"
+refute "and does not offer a session"        "no session" "$out"
+check_rc "exits 1"                           1 "$rc"
+refute "and attaches nothing"                "MOSH_ARGS" "$out"
+running main doctr
+check  "an existing session by that name is attached" "tmux new -A -s doctr" "$(C doctr)"
+
+echo "connect: dev connect picks from a list"
+check  "the filter matches anywhere, any case" $'fresco|1\nmy_fresh|0' \
+    "$(bash -c '. "$HOME/.local/lib/dev/connect.sh"; _filter_sessions FRES "main|0" "fresco|1" "my_fresh|0"')"
+check  "an empty filter keeps everything" $'main|0\nfresco|1' \
+    "$(bash -c '. "$HOME/.local/lib/dev/connect.sh"; _filter_sessions "" "main|0" "fresco|1"')"
+running "main|0" "fresco|1" "magpie|0"
+pick() { keys "$1"; DEV_TTY="$cs/keys" C connect; }
+out=$(pick '\n')
+check  "enter takes the first"           "tmux new -A -s main" "$out"
+check  "the list has a filter line"      "session:" "$out"
+check  "attached sessions are marked"    "fresco (attached)" "$out"
+check  "and it leaves no trace"          $'\033[J\033[?25h' "$out"
+check  "down moves the selection"        "tmux new -A -s fresco" "$(pick '\033[B\n')"
+check  "and up moves it back"            "tmux new -A -s fresco" "$(pick '\033[B\033[B\033[A\n')"
+check  "it stops at the last"            "tmux new -A -s magpie" "$(pick '\033[B\033[B\033[B\033[B\n')"
+check  "ctrl-n moves down too"           "tmux new -A -s fresco" "$(pick '\016\n')"
+check  "typing filters"                  "tmux new -A -s magpie" "$(pick 'mag\n')"
+check  "in any case"                     "tmux new -A -s magpie" "$(pick 'MAG\n')"
+check  "backspace widens it again"       "tmux new -A -s fresco" "$(pick 'zz\177\177fr\n')"
+out=$(pick 'zzz\n'); rc=$?
+check  "no match says so"                "no session matches" "$out"
+refute "and enter attaches nothing"      "MOSH_ARGS" "$out"
+check_rc "running out of keys cancels"   1 "$rc"
+out=$(pick '\033'); rc=$?
+refute "esc cancels"                     "MOSH_ARGS" "$out"
+check_rc "with exit 1"                   1 "$rc"
+running
+check  "with nothing running it says so" "no sessions on mini" "$(pick '\n')"
+out=$(running main; C connect); rc=$?
+check  "without a terminal it says why"  "needs a terminal" "$out"
+check_rc "and exits 1"                   1 "$rc"
+out=$(C connect fresco); rc=$?
+check  "connect takes no name"           "takes no name" "$out"
+check_rc "exits 1"                       1 "$rc"
+rm -rf "$cs"
 
 echo "unreachable"
 cat > "$stub_dir/ssh" <<'STUB'
@@ -121,7 +187,7 @@ cat > "$stub_dir/ssh" <<'STUB'
 exit 255
 STUB
 chmod +x "$stub_dir/ssh"
-out=$("$DEV" connect 2>&1); rc=$?
+out=$("$DEV" 2>&1); rc=$?
 check "connect fails with a useful message" "cannot reach" "$out"
 check_rc "connect exits 1 when unreachable" 1 "$rc"
 out=$("$DEV" ls 2>&1); rc=$?;       check_rc "ls exits 1 when unreachable" 1 "$rc"
@@ -564,17 +630,14 @@ refute "an API key is masked" "s3cr3t" "$err"
 check "and marked as masked" "X-API-Key:" "$err"
 
 err=$(V -v magpie 2>&1 >/dev/null)
-check "connect says where the name came from" "session 'magpie' from the name given" "$err"
-check "and whether it exists" "'magpie' exists on mini: attaching" "$err"
+check "connect says the session exists" "'magpie' exists on mini: attaching" "$err"
 check "and the command it runs" '[dev] $ mosh mini -- tmux new -A -s magpie' "$err"
 err=$(cd "$DEV_PROJECTS_DIR/fresco" && V -v 2>&1 >/dev/null)
-check "connect names the project folder" "from the project folder you are in" "$err"
-check "and the start folder" "if it has to be created, it starts in $DEV_PROJECTS_DIR/fresco" "$err"
-check "and a missing session" "'fresco' does not exist on mini: creating it" "$err"
+check "connect says why a folder's session was passed over" "no 'fresco' session on mini for $DEV_PROJECTS_DIR/fresco: 'main' instead" "$err"
 err=$(V -v my.proj 2>&1 >/dev/null)
 check "connect explains a renamed session" "renamed 'my.proj' to 'my_proj'" "$err"
-err=$(V -v 2>&1 >/dev/null)
-check "connect explains the default" "session 'main', the default" "$err"
+err=$(cd "$DEV_PROJECTS_DIR" && V -v 2>&1 >/dev/null)
+check "connect explains the default" "names no session: 'main', the default" "$err"
 
 # Tools are logging functions in verbose mode; `have` must not mistake one
 # for an installed program.

@@ -161,7 +161,7 @@ dev_doctor() {
         local n
         n=$(tmux ls 2>/dev/null | wc -l | tr -d ' ')
         [ "${n:-0}" -gt 0 ] && _p "$n tmux session(s) running" \
-            || _w "no tmux sessions running yet" "dev connect"
+            || _w "no tmux sessions running yet" "dev starts main"
 
         local vault="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Notes"
         if [ -d "$vault" ]; then

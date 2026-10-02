@@ -16,7 +16,7 @@ dev_ls() {
         [ "$DEV_VERBOSE" = 1 ] \
             && debug "tmux on $DEV_HOST says: $(command ssh -o BatchMode=yes "$DEV_HOST" 'tmux ls 2>&1' | head -1)"
         echo "no sessions on $DEV_HOST"
-        printf '  %s→ dev connect%s\n' "$C_DIM" "$C_OFF"
+        printf '  %s→ dev starts main%s\n' "$C_DIM" "$C_OFF"
         return 0
     fi
     printf '%s\n' "$out"
