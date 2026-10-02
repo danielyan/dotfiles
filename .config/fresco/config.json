@@ -1,10 +1,8 @@
 {
   "currentSelection" : {
-    "categoryID" : "__nsfw__",
-    "categoryName" : "NSFW",
-    "kind" : "category"
+    "kind" : "featured"
   },
-  "currentSourceID" : "wallhaven",
+  "currentSourceID" : "reddit",
   "displayMode" : "perDisplay",
   "downloadAskEveryTime" : false,
   "downloadLocationPath" : "/Users/ldan/Library/Mobile Documents/com~apple~CloudDocs/wallpapers",
