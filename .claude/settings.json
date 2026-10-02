@@ -81,6 +81,7 @@
     "clangd-lsp@claude-plugins-official": true
   },
   "effortLevel": "medium",
+  "autoUpdatesChannel": "latest",
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
