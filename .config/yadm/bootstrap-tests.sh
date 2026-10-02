@@ -413,5 +413,63 @@ out=$(mode_case "work" "")
 check  "another class alone does not"         "MODE:workstation" "$out"
 refute "nothing unexpected is asked of yadm"  "unexpected"       "$(mode_case "" --server)"
 
+# start_tailscale_service: $1 = "installed" or "missing", $2 = "running" if the
+# LaunchDaemon is already there, $3 = brew services exit, $4 = tailscale status exit
+ts_service_case() {
+    local tmp; tmp=$(mktemp -d); mkdir "$tmp/bin" "$tmp/daemons"
+    printf '#!/usr/bin/env bash\necho "sudo $*" >> "%s/calls"; exec "$@"\n' "$tmp" > "$tmp/bin/sudo"
+    printf '#!/usr/bin/env bash\necho "brew $*" >> "%s/calls"; exit %s\n' "$tmp" "$3" > "$tmp/bin/brew"
+    [ "$1" = installed ] && printf '#!/usr/bin/env bash\nexit %s\n' "$4" > "$tmp/bin/tailscale"
+    [ "$2" = running ] && touch "$tmp/daemons/sh.brew.tailscale.plist"
+    chmod +x "$tmp/bin/"*
+    PATH="$tmp/bin:/usr/bin:/bin" LAUNCH_DAEMONS_DIR="$tmp/daemons" bash -c '
+        echo_ok()   { echo "[ok] $1"; }
+        echo_err()  { echo "[err] $1"; }
+        TODOS=(); todo() { TODOS+=("$1"); echo_err "$1"; }
+        '"$(awk '/^command_exists\(\)/' "$BOOTSTRAP")"'
+        '"$(awk '/^start_tailscale_service\(\)/,/^\}/' "$BOOTSTRAP")"'
+        start_tailscale_service
+        printf "TODOCOUNT:%d\n" "${#TODOS[@]}"
+    ' 2>&1
+    [ -f "$tmp/calls" ] && cat "$tmp/calls"
+    rm -rf "$tmp"
+}
+
+echo "server: tailscaled as a system service"
+out=$(ts_service_case installed stopped 0 0)
+check  "starts it with sudo, so it is a LaunchDaemon" "sudo brew services start tailscale" "$out"
+check  "says so"                         "Started tailscaled as a system service" "$out"
+check  "and asks nothing more when signed in" "TODOCOUNT:0"                      "$out"
+out=$(ts_service_case installed running 0 0)
+refute "leaves a running one alone"      "brew services start"                   "$out"
+check  "and says it is there"            "already runs as a system service"      "$out"
+out=$(ts_service_case installed stopped 1 0)
+check  "a failed start is a todo"        "Run: sudo brew services start tailscale" "$out"
+refute "and does not claim to be started" "Started tailscaled"                   "$out"
+out=$(ts_service_case installed running 0 1)
+check  "a signed-out daemon is a todo"   "Run: sudo tailscale up --ssh"          "$out"
+out=$(ts_service_case missing stopped 0 0)
+check  "no formula is a todo"            "Tailscale is not installed"            "$out"
+refute "and nothing is started"          "brew services"                         "$out"
+call_line=$(grep -n -m1 '&& start_tailscale_service$' "$BOOTSTRAP" | cut -d: -f1)
+bundle_line=$(grep -n -m1 '^brew bundle' "$BOOTSTRAP" | cut -d: -f1)
+check  "it runs after the Brewfile, in server mode only" "yes" \
+    "$([ -n "$call_line" ] && [ "$call_line" -gt "$bundle_line" ] \
+        && sed -n "${call_line}p" "$BOOTSTRAP" | grep -q 'SERVER_MODE' && echo yes || echo no)"
+
+echo "Brewfile: the formula on the server, the app elsewhere"
+if command -v brew >/dev/null; then
+    bf_yadm=$(mktemp -d)
+    bf() { printf '#!/bin/sh\nprintf "%s\\n"\n' "$1" > "$bf_yadm/yadm"; chmod +x "$bf_yadm/yadm"
+           HOMEBREW_YADM="$bf_yadm/yadm" brew bundle list --all --file="$HOME/Brewfile" 2>&1 | grep -x 'tailscale\(-app\)\?'; }
+    check "a server gets the formula"           "tailscale"     "$(bf server)"
+    check "with other classes too"              "tailscale"     "$(bf 'laptop\nserver')"
+    check "anything else gets the app"          "tailscale-app" "$(bf laptop)"
+    check "and so does a machine with no class" "tailscale-app" "$(bf '')"
+    rm -rf "$bf_yadm"
+else
+    printf '  - skipped: brew is not installed\n'
+fi
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

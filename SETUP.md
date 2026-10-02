@@ -55,20 +55,21 @@ and puts `~/bin` on the path; the shell that ran the installer has neither.
 
 ### 1.3 Tailscale
 
-```sh
-open -a Tailscale
-```
+The Mini runs the `tailscale` formula, not the app: the Brewfile picks it for a
+machine of class `server`, and bootstrap starts its `tailscaled` as a system
+service (`sudo brew services start tailscale`). As root it is a LaunchDaemon,
+up before anyone logs in, so after a reboot the Mini is reachable without one.
+The app, or `brew services` without sudo, would wait for a login.
 
-Sign in. Interactive login is correct here — don't bother with auth keys for a
-Mac with a browser attached.
+If the app is still installed from before, remove it: `brew uninstall --cask
+tailscale-app`. Two clients on one machine fight over the network.
 
-### 1.4 Enable SSH
+### 1.4 Sign in and enable SSH
 
 Either works. Tailscale SSH avoids managing keys:
 
 ```sh
-# The cask does not put the CLI on $PATH; it lives inside the app bundle.
-/Applications/Tailscale.app/Contents/MacOS/Tailscale up --ssh
+sudo tailscale up --ssh    # prints a login URL; open it in any browser
 ```
 
 > **Check your tailnet's SSH ACL.** New tailnets default to `"action": "check"`,

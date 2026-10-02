@@ -68,6 +68,36 @@ _doctor_spin() {
     return "$rc"
 }
 
+# Which Tailscale this machine has: `app <cli>` for Tailscale.app (its CLI is
+# inside the bundle), `brew <cli>` for the formula, whose tailscaled runs as a
+# system service and so is up before anyone logs in, or nothing at all.
+_tailscale_install() {
+    local app="${DEV_TAILSCALE_APP:-/Applications/Tailscale.app}" cli
+    if [ -x "$app/Contents/MacOS/Tailscale" ]; then
+        printf 'app %s\n' "$app/Contents/MacOS/Tailscale"
+    elif cli=$(type -P tailscale); then
+        printf 'brew %s\n' "$cli"
+    else
+        return 1
+    fi
+}
+
+# How a Tailscale CLI finds its daemon: `ok`, `stale` when the daemon is older
+# than the CLI (an upgrade that was never followed by a restart: status still
+# works, but warns), or `down`.
+#   _tailscale_state <cli>
+_tailscale_state() {
+    local err
+    if err=$("$1" status 2>&1 >/dev/null); then
+        case "$err" in
+            *"client version"*"server version"*) echo stale ;;
+            *) echo ok ;;
+        esac
+    else
+        echo down
+    fi
+}
+
 dev_doctor() {
     local pass=0 warn=0 fail=0 area=""
     # A blank line between areas, none before the first.
@@ -79,15 +109,20 @@ dev_doctor() {
     _w() { _doctor_line "$area" warn "$@"; warn=$((warn+1)); }
     _f() { _doctor_line "$area" fail "$@"; fail=$((fail+1)); }
 
-    local TS_CLI="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
+    local ts_kind="" ts_cli="" ts
+    ts=$(_tailscale_install) && read -r ts_kind ts_cli <<< "$ts"
+    debug "tailscale: ${ts:-not installed}"
 
     _area packages
     local pkg
     for pkg in tmux mosh syncthing atuin; do
         have "$pkg" && _p "$pkg" || _f "$pkg missing" "brew bundle --file=~/Brewfile"
     done
-    [ -d /Applications/Tailscale.app ] && _p "Tailscale.app" \
-        || _f "Tailscale.app missing" "brew bundle --file=~/Brewfile, then open it and sign in"
+    case "$ts_kind" in
+        app)  _p "Tailscale (app)" ;;
+        brew) _p "Tailscale (brew)" ;;
+        *)    _f "Tailscale missing" "brew bundle --file=~/Brewfile, then open it and sign in" ;;
+    esac
 
     _area dotfiles
     if have yadm; then
@@ -105,11 +140,19 @@ dev_doctor() {
     fi
 
     _area network
-    if [ -x "$TS_CLI" ]; then
-        _doctor_spin "$area" "checking Tailscale" "$TS_CLI" status >/dev/null 2>&1 && _p "Tailscale connected" \
-            || _f "Tailscale not connected" "open -a Tailscale and sign in"
+    if [ -n "$ts_cli" ]; then
+        case "$(_doctor_spin "$area" "checking Tailscale" _tailscale_state "$ts_cli")" in
+            ok)    _p "Tailscale connected" ;;
+            stale) _w "Tailscale connected, but tailscaled is older than its CLI" \
+                      "sudo brew services restart tailscale" ;;
+            *)     if [ "$ts_kind" = brew ]; then
+                       _f "Tailscale not connected" "sudo brew services start tailscale, then sudo tailscale up --ssh"
+                   else
+                       _f "Tailscale not connected" "open -a Tailscale and sign in"
+                   fi ;;
+        esac
     else
-        _f "Tailscale CLI not found" "install Tailscale.app"
+        _f "Tailscale not installed" "brew bundle --file=~/Brewfile"
     fi
 
     if is_server; then

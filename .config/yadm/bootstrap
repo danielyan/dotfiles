@@ -193,6 +193,29 @@ set_hostname() {
     fi
 }
 
+# The Mini's tailscaled, from the formula the Brewfile gives a server. Started
+# as root it is a LaunchDaemon, up before anyone logs in, so a reboot never
+# waits on a login to be reachable; `brew services` without sudo would make it
+# a per-user agent. Signing in stays a todo: it needs a browser.
+start_tailscale_service() {
+    local daemons="${LAUNCH_DAEMONS_DIR:-/Library/LaunchDaemons}"
+    if ! command_exists tailscale; then
+        todo "Tailscale is not installed. Run: brew bundle --file=~/Brewfile"
+        return
+    fi
+    # brew names its service files sh.brew.*; before that, homebrew.mxcl.*.
+    if [ -f "$daemons/sh.brew.tailscale.plist" ] || [ -f "$daemons/homebrew.mxcl.tailscale.plist" ]; then
+        echo_ok "tailscaled already runs as a system service"
+    elif sudo brew services start tailscale >/dev/null; then
+        echo_ok "Started tailscaled as a system service"
+    else
+        todo "tailscaled is not running. Run: sudo brew services start tailscale"
+        return
+    fi
+    tailscale status >/dev/null 2>&1 \
+        || todo "Sign the Mini into Tailscale. Run: sudo tailscale up --ssh"
+}
+
 echo_ok "Bootstrap starting..."
 
 [ "$SERVER_MODE" -eq 1 ] && configure_server
@@ -221,6 +244,7 @@ echo_ok "Installing apps from Brewfile..."
 # A failed install would otherwise scroll past: bootstrap runs without set -e.
 brew bundle --file="$HOME/Brewfile" \
     || todo "Some Brewfile entries did not install. Retry with: brew bundle --file=~/Brewfile"
+[ "$SERVER_MODE" -eq 1 ] && start_tailscale_service
 
 ## Touch ID for sudo ########################################
 enable_touchid_sudo

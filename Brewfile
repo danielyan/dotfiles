@@ -52,7 +52,19 @@ cask "claude"
 cask "synology-drive"
 cask "bambu-studio"
 cask "claude-code"
-cask "tailscale-app"   # mesh network + Tailscale SSH
+# Mesh network + Tailscale SSH. The Mini (yadm class "server") takes the
+# formula: its tailscaled is a system service, up before anyone logs in, so
+# after a reboot the Mini is reachable without a login. Bootstrap starts it
+# as root; `restart_service:` here would start it as a per-user agent.
+# Elsewhere the app, which signs in through the menu bar.
+# brew runs this with a bare system PATH, so yadm needs its full path; tests
+# point HOMEBREW_YADM (brew passes HOMEBREW_* through) at a stub.
+yadm = ENV.fetch("HOMEBREW_YADM", "#{HOMEBREW_PREFIX}/bin/yadm")
+if `"#{yadm}" config --get-all local.class 2>/dev/null`.split.include?("server")
+  brew "tailscale"
+else
+  cask "tailscale-app"
+end
 cask "danielyan/tap/fresco"  # own app; updates itself via Sparkle
 
 mas "Brother iPrint&Scan", id: 1193539993

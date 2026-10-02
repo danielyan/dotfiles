@@ -301,6 +301,32 @@ refute   "none of it lands in the output"                "fetching" "$out"
 out=$(DEV_VERBOSE=1 spin 1 sh -c 'echo result')
 check    "-v turns the spinner off"                      "<none>" "$(cat "$stub_dir/spin.tty")<none>"
 
+echo "doctor: Tailscale from the app or from brew"
+ts_dir=$(mktemp -d); mkdir -p "$ts_dir/bin" "$ts_dir/Tailscale.app/Contents/MacOS"
+# A tailscale CLI whose `status` behaves as $TS_MODE says: ok, stale or down.
+cat > "$ts_dir/bin/tailscale" <<'STUB'
+#!/usr/bin/env bash
+case "${TS_MODE:-ok}" in
+    stale) echo 'Warning: client version "1.102.5" != tailscaled server version "1.102.4"' >&2 ;;
+    down)  echo 'failed to connect to local tailscaled' >&2; exit 1 ;;
+esac
+echo "100.94.57.78   mini   macOS   -"
+STUB
+cp "$ts_dir/bin/tailscale" "$ts_dir/Tailscale.app/Contents/MacOS/Tailscale"
+chmod +x "$ts_dir/bin/tailscale" "$ts_dir/Tailscale.app/Contents/MacOS/Tailscale"
+ts() { bash -c '. "$HOME/.local/lib/dev/doctor.sh"; "$@"' _ "$@"; }
+no_app="$ts_dir/none.app"
+check "the app is found by its bundle" "app $ts_dir/Tailscale.app/Contents/MacOS/Tailscale" \
+    "$(DEV_TAILSCALE_APP="$ts_dir/Tailscale.app" PATH="$ts_dir/bin:$PATH" ts _tailscale_install)"
+check "brew's CLI is found on PATH"    "brew $ts_dir/bin/tailscale" \
+    "$(DEV_TAILSCALE_APP="$no_app" PATH="$ts_dir/bin:$PATH" ts _tailscale_install)"
+DEV_TAILSCALE_APP="$no_app" PATH="$ts_dir/empty:/usr/bin:/bin" ts _tailscale_install >/dev/null; rc=$?
+check_rc "neither is not installed"    1 "$rc"
+check "a working daemon is ok"         "ok"    "$(TS_MODE=ok    ts _tailscale_state "$ts_dir/bin/tailscale")"
+check "a daemon behind its CLI is stale" "stale" "$(TS_MODE=stale ts _tailscale_state "$ts_dir/bin/tailscale")"
+check "no daemon is down"              "down"  "$(TS_MODE=down  ts _tailscale_state "$ts_dir/bin/tailscale")"
+rm -rf "$ts_dir"
+
 echo "doctor: reading syncthing's folders"
 # The API pretty-prints ("fsWatcherEnabled": true), which the old grep for
 # "fsWatcherEnabled":true never matched. Fixtures are pretty-printed on purpose.
