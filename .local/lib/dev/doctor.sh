@@ -1,4 +1,4 @@
-# mini doctor — verify every link in the chain and say what to fix.
+# dev doctor — verify every link in the chain and say what to fix.
 #
 # Read-only: checks state, changes nothing. Each failed check prints the exact
 # remedy. Exits non-zero if anything failed, so it works in a script.
@@ -27,7 +27,7 @@ if folders:
 }
 _cf_field() { printf '%s\n' "$1" | awk -v k="$2" '$1 == k { print $2 }'; }
 
-mini_doctor() {
+dev_doctor() {
     local pass=0 warn=0 fail=0
     _p() { ok "$1"; pass=$((pass+1)); }
     _w() { maybe "$@"; warn=$((warn+1)); }
@@ -72,7 +72,7 @@ mini_doctor() {
         local n
         n=$(tmux ls 2>/dev/null | wc -l | tr -d ' ')
         [ "${n:-0}" -gt 0 ] && _p "$n tmux session(s) running" \
-            || _w "no tmux sessions running yet" "mini connect"
+            || _w "no tmux sessions running yet" "dev connect"
 
         local vault="$HOME/Library/Mobile Documents/iCloud~md~obsidian/Documents/Notes"
         if [ -d "$vault" ]; then
@@ -91,12 +91,12 @@ mini_doctor() {
             || _f "~/.ssh/config does not include config.mini" "yadm bootstrap"
 
         if reachable; then
-            _p "ssh $MINI_HOST"
+            _p "ssh $DEV_HOST"
 
             # The silent killer: Claude keys session dirs on $HOME, so a
             # different username means transcripts never line up.
             local remote_user
-            remote_user=$(ssh -o BatchMode=yes "$MINI_HOST" 'whoami' 2>/dev/null)
+            remote_user=$(ssh -o BatchMode=yes "$DEV_HOST" 'whoami' 2>/dev/null)
             if [ "$remote_user" = "$(whoami)" ]; then
                 _p "username matches on both machines ($remote_user)"
             else
@@ -104,21 +104,21 @@ mini_doctor() {
                    "Claude session dirs are keyed on \$HOME; transcripts will NOT line up"
             fi
 
-            if ssh -o BatchMode=yes "$MINI_HOST" 'command -v tmux' >/dev/null 2>&1; then
+            if ssh -o BatchMode=yes "$DEV_HOST" 'command -v tmux' >/dev/null 2>&1; then
                 local sessions
-                sessions=$(ssh -o BatchMode=yes "$MINI_HOST" 'tmux ls 2>/dev/null | wc -l' 2>/dev/null | tr -d ' ')
+                sessions=$(ssh -o BatchMode=yes "$DEV_HOST" 'tmux ls 2>/dev/null | wc -l' 2>/dev/null | tr -d ' ')
                 _p "tmux on mini (${sessions:-0} session(s))"
             else
-                _f "tmux not installed on mini" "mini run brew install tmux"
+                _f "tmux not installed on mini" "dev run brew install tmux"
             fi
 
             if have mosh; then
-                ssh -o BatchMode=yes "$MINI_HOST" 'command -v mosh-server' >/dev/null 2>&1 \
+                ssh -o BatchMode=yes "$DEV_HOST" 'command -v mosh-server' >/dev/null 2>&1 \
                     && _p "mosh available on both ends" \
-                    || _w "mosh-server missing on mini" "mini run brew install mosh"
+                    || _w "mosh-server missing on mini" "dev run brew install mosh"
             fi
         else
-            _f "cannot ssh to '$MINI_HOST'" "check Tailscale on both ends; is the Mini awake?"
+            _f "cannot ssh to '$DEV_HOST'" "check Tailscale on both ends; is the Mini awake?"
         fi
     fi
 
@@ -139,13 +139,13 @@ mini_doctor() {
                 count=$(_cf_field "$report" count)
                 debug "syncthing folders for ~/.claude: $(printf '%s' "$report" | tr '\n' ' ')"
                 if [ "${count:-0}" -eq 0 ]; then
-                    _f "~/.claude not shared yet" "mini pair"
+                    _f "~/.claude not shared yet" "dev pair"
                 else
                     [ "$count" -gt 1 ] && _w "$count syncthing folders point at ~/.claude" \
                         "keep '$(_cf_field "$report" id)' and remove the others; removing one deletes the shared .stfolder marker, so then: mkdir ~/.claude/.stfolder"
                     [ "$(_cf_field "$report" devices)" -gt 1 ] \
                         && _p "~/.claude shared in syncthing" \
-                        || _f "~/.claude is in syncthing but shared with no other device" "mini pair"
+                        || _f "~/.claude is in syncthing but shared with no other device" "dev pair"
                 fi
 
                 local devices
@@ -191,7 +191,7 @@ mini_doctor() {
                "on the machine with history: atuin import auto, then register; elsewhere: atuin login -k KEY"
         fi
     fi
-    [ -x "$HOME/bin/mini" ] && _p "mini installed" || _f "mini missing" "yadm checkout bin/mini"
+    [ -x "$HOME/bin/dev" ] && _p "dev installed" || _f "dev missing" "yadm checkout bin/dev"
 
     printf '\n%s%d passed, %d warnings, %d failed%s\n' "$C_BOLD" "$pass" "$warn" "$fail" "$C_OFF"
     [ "$fail" -eq 0 ]

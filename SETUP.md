@@ -72,8 +72,8 @@ Either works. Tailscale SSH avoids managing keys:
 ```
 
 > **Check your tailnet's SSH ACL.** New tailnets default to `"action": "check"`,
-> which forces a browser re-auth every 12 hours. That breaks `mini run`,
-> `mini pair`, and `mini doctor`, all of which use non-interactive ssh. In the
+> which forces a browser re-auth every 12 hours. That breaks `dev run`,
+> `dev pair`, and `dev doctor`, all of which use non-interactive ssh. In the
 > admin console, change the `ssh` rule for your own devices to `"action": "accept"`.
 
 Or skip Tailscale SSH and use plain sshd: System Settings → General → Sharing →
@@ -90,7 +90,7 @@ No reliable CLI equivalent:
 ### 1.6 Verify
 
 ```sh
-mini doctor
+dev doctor
 ```
 
 Expect green on packages, Tailscale, server role, and vault. Syncthing checks
@@ -99,7 +99,7 @@ will fail until step 3 — that's correct.
 Start a session so there's something to attach to:
 
 ```sh
-mini
+dev
 ```
 
 ---
@@ -147,7 +147,7 @@ sshd: run `ssh-copy-id mini`.
 From the **Air**:
 
 ```sh
-mini pair
+dev pair
 ```
 
 Reads both device IDs over ssh, introduces the machines, creates the
@@ -198,15 +198,15 @@ atuin sync
 ### 3.3 Verify end to end
 
 ```sh
-mini doctor        # everything green
+dev doctor         # everything green
 ```
 
 Then the real test:
 
 ```sh
-mini              # lands in tmux on the Mini
+dev               # lands in tmux on the Mini
 # ctrl-a d to detach
-mini              # same session back
+dev               # same session back
 ```
 
 That round trip is the whole model working. `doctor` also compares `whoami` on
@@ -219,11 +219,11 @@ this doc.
 
 | | |
 |---|---|
-| `mini` | Attach to the `main` session |
-| `mini ls` | What's running, without attaching |
-| `mini run <cmd>` | One command remotely |
-| `mini status` | Fast health check |
-| `mini preflight` | Before going offline: pull everything down |
-| `mini land` | After coming back: push up, catch the Mini up |
+| `dev` | Attach to the `main` session |
+| `dev ls` | What's running, without attaching |
+| `dev run <cmd>` | One command remotely |
+| `dev status` | Fast health check |
+| `dev preflight` | Before going offline: pull everything down |
+| `dev land` | After coming back: push up, catch the Mini up |
 
 Full command reference and troubleshooting: `README.md`.

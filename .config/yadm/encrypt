@@ -5,4 +5,4 @@
 .config/vscode/mcp.json
 projects/.env
 .config/fresco/credentials.json
-.config/mini/repos
+.config/dev/repos

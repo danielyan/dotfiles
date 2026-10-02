@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Tests for `mini`. Run: bash ~/.local/lib/mini/tests.sh
+# Tests for `dev`. Run: bash ~/.local/lib/dev/tests.sh
 #
 # Stubs ssh/mosh on PATH so the remote-invocation paths can be checked without
 # a reachable Mini. Covers argument quoting, dispatch, and error handling.
 
 set -uo pipefail
-MINI="$HOME/bin/mini"
+DEV="$HOME/bin/dev"
 stub_dir=$(mktemp -d)
 trap 'rm -rf "$stub_dir"' EXIT
 pass=0; fail=0
@@ -40,60 +40,60 @@ printf '#!/usr/bin/env bash\nprintf " displaysleep         10\\n sleep          
 chmod +x "$stub_dir/pmset"
 export PATH="$stub_dir:$PATH"
 # A projects folder of the suite's own, and a working directory outside it, so
-# which session `mini` picks does not depend on where the suite was started.
-export MINI_PROJECTS_DIR="$stub_dir/projects"
-mkdir -p "$MINI_PROJECTS_DIR"
+# which session `dev` picks does not depend on where the suite was started.
+export DEV_PROJECTS_DIR="$stub_dir/projects"
+mkdir -p "$DEV_PROJECTS_DIR"
 cd "$stub_dir" || exit 1
 
 echo "dispatch"
-out=$("$MINI" help 2>&1);            check "help lists subcommands" "mini preflight" "$out"
-out=$("$MINI" bogus 2>&1); rc=$?;    check "a non-command is a session" "tmux new -A -s bogus" "$out"
+out=$("$DEV" help 2>&1);            check "help lists subcommands" "dev preflight" "$out"
+out=$("$DEV" bogus 2>&1); rc=$?;    check "a non-command is a session" "tmux new -A -s bogus" "$out"
 check_rc "and attaching exits 0" 0 "$rc"
-out=$("$MINI" -x 2>&1); rc=$?;       check "an unknown option is refused" "unknown option '-x'" "$out"
+out=$("$DEV" -x 2>&1); rc=$?;       check "an unknown option is refused" "unknown option '-x'" "$out"
 check_rc "and exits 1" 1 "$rc"
 
 echo "run"
 # What goes over the wire. Whether it arrives intact on a real login shell is
 # checked by "remote commands arrive intact" below.
-out=$("$MINI" run echo hello 2>&1);  check "run uses a login shell" "bash -ls" "$out"
+out=$("$DEV" run echo hello 2>&1);  check "run uses a login shell" "bash -ls" "$out"
 check "run sends the command on stdin" "SSH_STDIN: echo hello" "$out"
-out=$("$MINI" run echo 'two words' 2>&1)
+out=$("$DEV" run echo 'two words' 2>&1)
 check "run quotes arguments with spaces" "two\\ words" "$out"
-out=$("$MINI" run 'rm -rf /; echo pwned' 2>&1)
+out=$("$DEV" run 'rm -rf /; echo pwned' 2>&1)
 check "run quotes shell metacharacters" "\;" "$out"
-out=$("$MINI" run 2>&1); rc=$?;      check_rc "run with no args exits 1" 1 "$rc"
-check "run with no args explains usage" "usage: mini run" "$out"
+out=$("$DEV" run 2>&1); rc=$?;      check_rc "run with no args exits 1" 1 "$rc"
+check "run with no args explains usage" "usage: dev run" "$out"
 
 echo "connect"
-out=$("$MINI" connect 2>&1);         check "connect prefers mosh" "MOSH_ARGS" "$out"
+out=$("$DEV" connect 2>&1);         check "connect prefers mosh" "MOSH_ARGS" "$out"
 check "connect attaches-or-creates" "tmux new -A -s main" "$out"
-out=$("$MINI" connect scratch 2>&1); check "connect honours a session name" "tmux new -A -s scratch" "$out"
-out=$(MINI_HOST=elsewhere "$MINI" connect 2>&1)
-check "MINI_HOST is respected" "elsewhere" "$out"
+out=$("$DEV" connect scratch 2>&1); check "connect honours a session name" "tmux new -A -s scratch" "$out"
+out=$(DEV_HOST=elsewhere "$DEV" connect 2>&1)
+check "DEV_HOST is respected" "elsewhere" "$out"
 
 echo "sessions by name, and by folder"
-mkdir -p "$MINI_PROJECTS_DIR/fresco/Sources" "$MINI_PROJECTS_DIR/my.proj"
-out=$(cd "$MINI_PROJECTS_DIR/fresco/Sources" && "$MINI" 2>&1)
-check "mini in a project is that project's session" "tmux new -A -s fresco" "$out"
-check "started in the project folder" "-c $MINI_PROJECTS_DIR/fresco" "$out"
-out=$(cd "$MINI_PROJECTS_DIR" && "$MINI" 2>&1)
+mkdir -p "$DEV_PROJECTS_DIR/fresco/Sources" "$DEV_PROJECTS_DIR/my.proj"
+out=$(cd "$DEV_PROJECTS_DIR/fresco/Sources" && "$DEV" 2>&1)
+check "dev in a project is that project's session" "tmux new -A -s fresco" "$out"
+check "started in the project folder" "-c $DEV_PROJECTS_DIR/fresco" "$out"
+out=$(cd "$DEV_PROJECTS_DIR" && "$DEV" 2>&1)
 check "the projects folder itself is main" "tmux new -A -s main" "$out"
 refute "with no start folder" " -c " "$out"
-out=$("$MINI" 2>&1)
-check "mini elsewhere is main" "tmux new -A -s main" "$out"
-out=$("$MINI" fresco 2>&1)
-check "mini <project> starts in the project too" "-s fresco -c $MINI_PROJECTS_DIR/fresco" "$out"
-out=$("$MINI" magpie 2>&1)
+out=$("$DEV" 2>&1)
+check "dev elsewhere is main" "tmux new -A -s main" "$out"
+out=$("$DEV" fresco 2>&1)
+check "dev <project> starts in the project too" "-s fresco -c $DEV_PROJECTS_DIR/fresco" "$out"
+out=$("$DEV" magpie 2>&1)
 check "a name with no folder is just a session" "tmux new -A -s magpie" "$out"
 refute "with no start folder" " -c " "$out"
-out=$("$MINI" my.proj 2>&1)
+out=$("$DEV" my.proj 2>&1)
 check "dots become underscores" "-s my_proj" "$out"
 refute "and a changed name gets no folder" " -c " "$out"
-out=$("$MINI" "two words" 2>&1)
+out=$("$DEV" "two words" 2>&1)
 check "so do spaces" "-s two_words" "$out"
-out=$("$MINI" connect run 2>&1)
+out=$("$DEV" connect run 2>&1)
 check "connect takes a name that is a command" "tmux new -A -s run" "$out"
-out=$("$MINI" ls 2>&1)
+out=$("$DEV" ls 2>&1)
 refute "a command is still a command" "tmux new" "$out"
 
 echo "a near-miss of a command is a typo, unless that session exists"
@@ -105,13 +105,13 @@ case "\$*" in *"has-session -t =doctr"*) [ -f "$typo/exists" ]; exit \$? ;; esac
 echo "SSH_ARGS: \$*"
 STUB
 chmod +x "$typo/ssh"
-out=$(PATH="$typo:$PATH" "$MINI" doctr 2>&1); rc=$?
-check "suggests the command" "did you mean 'mini doctor'" "$out"
-check "and how to start the session anyway" "mini connect doctr" "$out"
+out=$(PATH="$typo:$PATH" "$DEV" doctr 2>&1); rc=$?
+check "suggests the command" "did you mean 'dev doctor'" "$out"
+check "and how to start the session anyway" "dev connect doctr" "$out"
 check_rc "exits 1" 1 "$rc"
 refute "and attaches nothing" "MOSH_ARGS" "$out"
 touch "$typo/exists"
-out=$(PATH="$typo:$PATH" "$MINI" doctr 2>&1)
+out=$(PATH="$typo:$PATH" "$DEV" doctr 2>&1)
 check "an existing session by that name is attached" "tmux new -A -s doctr" "$out"
 rm -rf "$typo"
 
@@ -121,17 +121,17 @@ cat > "$stub_dir/ssh" <<'STUB'
 exit 255
 STUB
 chmod +x "$stub_dir/ssh"
-out=$("$MINI" connect 2>&1); rc=$?
+out=$("$DEV" connect 2>&1); rc=$?
 check "connect fails with a useful message" "cannot reach" "$out"
 check_rc "connect exits 1 when unreachable" 1 "$rc"
-out=$("$MINI" ls 2>&1); rc=$?;       check_rc "ls exits 1 when unreachable" 1 "$rc"
+out=$("$DEV" ls 2>&1); rc=$?;       check_rc "ls exits 1 when unreachable" 1 "$rc"
 
 echo "pair: folder json"
 # add-json does NOT merge with defaults — every field omitted becomes a Go zero
 # value. These two silently break sync if left out, so assert them explicitly.
-MINI_HOST=mini MINI_SESSION=main HOME="$HOME" bash -c '
-  MINI_FOLDER_PATH=$HOME/.claude
-  . "$HOME/.local/lib/mini/pair.sh"
+DEV_HOST=mini DEV_SESSION=main HOME="$HOME" bash -c '
+  DEV_FOLDER_PATH=$HOME/.claude
+  . "$HOME/.local/lib/dev/pair.sh"
   _folder_json PEERID MYID
 ' > "$stub_dir/folder.json" 2>/dev/null
 
@@ -187,7 +187,7 @@ esac
 STUB
 chmod +x "$stub_dir/ssh" "$stub_dir/yadm"
 
-out=$(printf 'n\n' | PROJECTS_DIR="$land_fix/p" "$MINI" land 2>&1)
+out=$(printf 'n\n' | PROJECTS_DIR="$land_fix/p" "$DEV" land 2>&1)
 check "land finds the repo that is ahead" "ahead (1 commit(s))" "$out"
 check "land reports the dirty repo" "dirtyrepo — uncommitted changes" "$out"
 refute "land ignores the repo with no remote" "noremote (" "$out"
@@ -202,7 +202,7 @@ else
     printf '  ✗ declining still pushed\n'; fail=$((fail+1))
 fi
 # Accepting must actually push.
-out=$(printf 'y\n' | PROJECTS_DIR="$land_fix/p" "$MINI" land 2>&1)
+out=$(printf 'y\n' | PROJECTS_DIR="$land_fix/p" "$DEV" land 2>&1)
 check "accepting reports the push" "ahead pushed" "$out"
 remote_head=$(git -C "$land_fix/up.git" rev-parse main 2>/dev/null)
 local_head=$(git -C "$land_fix/p/ahead" rev-parse HEAD 2>/dev/null)
@@ -219,7 +219,7 @@ echo "remote commands arrive intact"
 # The stubs above echo their arguments, which hid a bug: real ssh joins them
 # with spaces and the Mini's login shell (fish) splits the result again, so
 # `ssh mini bash -lc "syncthing cli show system"` ran a bare `syncthing`, and
-# `mini run echo hello world` printed nothing. This stub behaves like the real
+# `dev run echo hello world` printed nothing. This stub behaves like the real
 # thing: drop options and host, join the rest, hand it to fish, stdin intact.
 if have_fish=$(command -v fish); then
     remote=$(mktemp -d); mkdir -p "$remote/home" "$remote/bin"
@@ -240,17 +240,17 @@ HOME="$remote/home" exec "$have_fish" --no-config -c "\$*"
 STUB
     chmod +x "$remote/ssh" "$remote/bin/syncthing"
 
-    rrun() { PATH="$remote:$PATH" MINI_HOST=mini "$MINI" run "$@" 2>&1; }
-    check "mini run keeps its arguments"   "hello world"                 "$(rrun echo hello world)"
+    rrun() { PATH="$remote:$PATH" DEV_HOST=mini "$DEV" run "$@" 2>&1; }
+    check "dev run keeps its arguments"   "hello world"                 "$(rrun echo hello world)"
     check "a single quote survives"        "it's fine"                   "$(rrun printf '%s' "it's fine")"
     check "\$ and backticks stay literal"  '$HOME and `date`'            "$(rrun printf '%s' '$HOME and `date`')"
 
     # pair's calls, through the same path.
     pair_remote() {
-        PATH="$remote:$PATH" MINI_HOST=mini bash -c '
+        PATH="$remote:$PATH" DEV_HOST=mini bash -c '
             debug() { :; }
-            '"$(awk '/^remote_bash\(\)/,/^\}|; }$/' "$MINI")"'
-            . "$HOME/.local/lib/mini/pair.sh"
+            '"$(awk '/^remote_bash\(\)/,/^\}|; }$/' "$DEV")"'
+            . "$HOME/.local/lib/dev/pair.sh"
             '"$1"
     }
     check "pair reads the peer's device id" "PEER-DEVICE-ID" "$(pair_remote '_device_id_remote')"
@@ -272,7 +272,7 @@ echo "doctor: reading syncthing's folders"
 # "fsWatcherEnabled":true never matched. Fixtures are pretty-printed on purpose.
 cf_home=$(mktemp -d); mkdir -p "$cf_home/.claude"
 cf() { printf '%s' "$1" | CLAUDE_DIR="$cf_home/.claude" bash -c '
-    . "$HOME/.local/lib/mini/doctor.sh"; _claude_folders'; }
+    . "$HOME/.local/lib/dev/doctor.sh"; _claude_folders'; }
 field() { printf '%s\n' "$1" | awk -v k="$2" '$1 == k { print $2 }'; }
 
 healthy='[
@@ -290,7 +290,7 @@ check "staggered versioning is reported"      "staggered" "$(field "$out" versio
 check "shared with both devices"              "2"         "$(field "$out" devices)"
 
 # What this Air actually had: a hand-made folder given as ~/.claude and the
-# one mini pair created, given as an absolute path — the same directory.
+# one dev pair created, given as an absolute path — the same directory.
 duplicate='[
   {
     "id": "3khhq-ijoxl",
@@ -331,7 +331,7 @@ for r in alpha beta; do
       && echo "$r" > README && git add . && git commit -qm init && git branch -M main \
       && git push -q origin main ) >/dev/null 2>&1
 done
-R() { MINI_REPOS_FILE="$rp/repos" MINI_PROJECTS_DIR="$rp/projects" "$MINI" repos "$@" 2>&1; }
+R() { DEV_REPOS_FILE="$rp/repos" DEV_PROJECTS_DIR="$rp/projects" "$DEV" repos "$@" 2>&1; }
 
 out=$(R list); rc=$?
 check "no list yet is explained, not an error" "no repo list yet" "$out"
@@ -362,7 +362,7 @@ out=$(R add --as x "file://$rp/upstream/alpha.git" "file://$rp/upstream/beta.git
 check "--as takes exactly one URL" "one repo at a time" "$out"
 check_rc "and exits 1" 1 "$rc"
 out=$(R add); rc=$?
-check "add with nothing explains usage" "usage: mini repos add" "$out"
+check "add with nothing explains usage" "usage: dev repos add" "$out"
 
 out=$(R status); rc=$?
 check "status names what is missing" "alpha — not cloned" "$out"
@@ -407,13 +407,13 @@ check "the file stays owner-only" "600" "$(stat -f %Lp "$rp/repos")"
 out=$(R remove betty); rc=$?
 check "removing an unknown name is refused" "not in the list" "$out"
 out=$(R delete alpha); rc=$?
-check "delete is not a command" "unknown: mini repos delete" "$out"
+check "delete is not a command" "unknown: dev repos delete" "$out"
 check_rc "and exits 1" 1 "$rc"
-check "an unknown subcommand shows the usage" "mini repos add <entry>..." "$out"
+check "an unknown subcommand shows the usage" "dev repos add <entry>..." "$out"
 
 # Several entries at once; a bad one does not stop the rest.
 mr=$(mktemp -d); mkdir -p "$mr/projects"
-M() { MINI_REPOS_FILE="$mr/repos" MINI_PROJECTS_DIR="$mr/projects" "$MINI" repos "$@" 2>&1; }
+M() { DEV_REPOS_FILE="$mr/repos" DEV_PROJECTS_DIR="$mr/projects" "$DEV" repos "$@" 2>&1; }
 out=$(M add "file://$rp/upstream/alpha.git" nonsense "file://$rp/upstream/beta.git"); rc=$?
 check "add takes several entries" "added alpha" "$out"
 check "the entry after a bad one still lands" "added beta" "$out"
@@ -427,15 +427,15 @@ check "the unknown one is named" "ghost is not in the list" "$out"
 check_rc "a partly failed remove exits 1" 1 "$rc"
 left=$(grep -E '^(alpha|beta) ' "$mr/repos"); check "both are gone from the file" "<none>" "${left:-<none>}"
 out=$(M remove); rc=$?
-check "remove with nothing explains usage" "usage: mini repos remove" "$out"
+check "remove with nothing explains usage" "usage: dev repos remove" "$out"
 rm -rf "$mr"
 
 out=$(R help); rc=$?
-check "mini repos help describes add" "mini repos add <entry>..." "$out"
-check "and --as" "mini repos add --as <name> <url>" "$out"
-check "and remove" "mini repos remove <name>..." "$out"
+check "dev repos help describes add" "dev repos add <entry>..." "$out"
+check "and --as" "dev repos add --as <name> <url>" "$out"
+check "and remove" "dev repos remove <name>..." "$out"
 check_rc "and exits 0" 0 "$rc"
-check "mini help lists repos" "mini repos" "$("$MINI" help 2>&1)"
+check "dev help lists repos" "dev repos" "$("$DEV" help 2>&1)"
 
 # GitHub URLs go through gh, which brings its own login.
 mkdir -p "$rp/bin"
@@ -462,11 +462,11 @@ printf '#!/usr/bin/env bash\nfor a in "$@"; do [ "$a" = true ] && exit 0; done\n
 chmod +x "$ps_dir/ssh"
 pm() { printf '#!/usr/bin/env bash\nprintf "%s"\n' "$1" > "$ps_dir/pmset"; chmod +x "$ps_dir/pmset"; }
 pm ' displaysleep         10\n sleep                0\n disksleep            0\n'
-out=$(PATH="$ps_dir:$PATH" "$MINI" run echo on-the-server 2>&1)
+out=$(PATH="$ps_dir:$PATH" "$DEV" run echo on-the-server 2>&1)
 check "sleep 0 behind displaysleep 10 is the server" "on-the-server" "$out"
 refute "and runs locally, not over ssh" "SSH_ARGS" "$out"
 pm ' displaysleep         0\n sleep                1 (sleep prevented by powerd)\n'
-out=$(PATH="$ps_dir:$PATH" "$MINI" run echo elsewhere 2>&1)
+out=$(PATH="$ps_dir:$PATH" "$DEV" run echo elsewhere 2>&1)
 check "sleep 1 is not the server, even with displaysleep 0" "SSH_ARGS" "$out"
 rm -rf "$ps_dir"
 
@@ -481,22 +481,22 @@ echo "SSH_ARGS: \$*"
 STUB
 printf '#!/usr/bin/env bash\necho "MOSH_ARGS: $*"\n' > "$vb/mosh"
 chmod +x "$vb/ssh" "$vb/mosh"
-V() { PATH="$vb:$PATH" "$MINI" "$@"; }
+V() { PATH="$vb:$PATH" "$DEV" "$@"; }
 
 quiet=$(V ls 2>&1)
-check "without -v there is no debug output" "<none>" "$(printf '%s' "$quiet" | grep '\[mini\]' || echo '<none>')"
+check "without -v there is no debug output" "<none>" "$(printf '%s' "$quiet" | grep '\[dev\]' || echo '<none>')"
 out=$(V -v ls 2>/dev/null)
 check "-v leaves stdout as it was" "$quiet" "$out"
 err=$(V -v ls 2>&1 >/dev/null)
-check "-v narrates on stderr" "[mini] this machine is a client" "$err"
-check "-v shows the remote calls" '[mini] $ ssh -o BatchMode=yes mini' "$err"
-check "including silenced ones" '[mini] $ ssh -o ConnectTimeout=5 -o BatchMode=yes mini true' "$err"
-check "--verbose is the same" "[mini] this machine is a client" "$(V --verbose ls 2>&1 >/dev/null)"
-check "so is MINI_VERBOSE=1" "[mini] this machine is a client" "$(MINI_VERBOSE=1 V ls 2>&1 >/dev/null)"
+check "-v narrates on stderr" "[dev] this machine is a client" "$err"
+check "-v shows the remote calls" '[dev] $ ssh -o BatchMode=yes mini' "$err"
+check "including silenced ones" '[dev] $ ssh -o ConnectTimeout=5 -o BatchMode=yes mini true' "$err"
+check "--verbose is the same" "[dev] this machine is a client" "$(V --verbose ls 2>&1 >/dev/null)"
+check "so is DEV_VERBOSE=1" "[dev] this machine is a client" "$(DEV_VERBOSE=1 V ls 2>&1 >/dev/null)"
 
 out=$(V run echo -v 2>&1)
 check "a -v after the command belongs to it" "SSH_STDIN: echo -v" "$out"
-check "and does not turn on verbose" "<none>" "$(printf '%s' "$out" | grep '\[mini\]' || echo '<none>')"
+check "and does not turn on verbose" "<none>" "$(printf '%s' "$out" | grep '\[dev\]' || echo '<none>')"
 
 err=$(V -v run curl -H 'X-API-Key: s3cr3t' http://127.0.0.1:8384 2>&1 >/dev/null)
 check "the command sent is shown" "sending to mini's bash: curl" "$err"
@@ -506,10 +506,10 @@ check "and marked as masked" "X-API-Key:" "$err"
 err=$(V -v magpie 2>&1 >/dev/null)
 check "connect says where the name came from" "session 'magpie' from the name given" "$err"
 check "and whether it exists" "'magpie' exists on mini: attaching" "$err"
-check "and the command it runs" '[mini] $ mosh mini -- tmux new -A -s magpie' "$err"
-err=$(cd "$MINI_PROJECTS_DIR/fresco" && V -v 2>&1 >/dev/null)
+check "and the command it runs" '[dev] $ mosh mini -- tmux new -A -s magpie' "$err"
+err=$(cd "$DEV_PROJECTS_DIR/fresco" && V -v 2>&1 >/dev/null)
 check "connect names the project folder" "from the project folder you are in" "$err"
-check "and the start folder" "if it has to be created, it starts in $MINI_PROJECTS_DIR/fresco" "$err"
+check "and the start folder" "if it has to be created, it starts in $DEV_PROJECTS_DIR/fresco" "$err"
 check "and a missing session" "'fresco' does not exist on mini: creating it" "$err"
 err=$(V -v my.proj 2>&1 >/dev/null)
 check "connect explains a renamed session" "renamed 'my.proj' to 'my_proj'" "$err"
@@ -518,7 +518,7 @@ check "connect explains the default" "session 'main', the default" "$err"
 
 # Tools are logging functions in verbose mode; `have` must not mistake one
 # for an installed program.
-out=$(PATH="$vb:/usr/bin:/bin:/usr/sbin:/sbin" "$MINI" -v pair 2>&1); rc=$?
+out=$(PATH="$vb:/usr/bin:/bin:/usr/sbin:/sbin" "$DEV" -v pair 2>&1); rc=$?
 check "a missing tool is still missing under -v" "syncthing not installed" "$out"
 check_rc "and pair stops" 1 "$rc"
 rm -rf "$vb"

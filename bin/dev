@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# mini — control the always-on Mac Mini from anywhere.
+# dev — control the always-on Mac Mini from anywhere.
 #
-# A shell-agnostic dispatcher: subcommands live in ~/.local/lib/mini/<name>.sh,
-# each defining a `mini_<name>` function. Deliberately plain bash so it works
+# A shell-agnostic dispatcher: subcommands live in ~/.local/lib/dev/<name>.sh,
+# each defining a `dev_<name>` function. Deliberately plain bash so it works
 # over ssh, in any shell, and on a machine that has not been set up yet.
 #
 # See ~/README.md and vault: projects/project-machine-continuity.md
 
 set -uo pipefail
 
-MINI_HOST="${MINI_HOST:-mini}"
-MINI_LIB="${MINI_LIB:-$HOME/.local/lib/mini}"
-MINI_SESSION="${MINI_SESSION:-main}"
+DEV_HOST="${DEV_HOST:-mini}"
+DEV_LIB="${DEV_LIB:-$HOME/.local/lib/dev}"
+DEV_SESSION="${DEV_SESSION:-main}"
 SYNCTHING_API="${SYNCTHING_API:-http://127.0.0.1:8384}"
-export MINI_HOST MINI_LIB MINI_SESSION SYNCTHING_API
+export DEV_HOST DEV_LIB DEV_SESSION SYNCTHING_API
 
 # --- output ---------------------------------------------------------------
 if [ -t 1 ]; then
@@ -29,7 +29,7 @@ no()      { printf '  %s✗%s %s\n' "$C_NO" "$C_OFF" "$1"
 maybe()   { printf '  %s➞%s %s\n' "$C_WARN" "$C_OFF" "$1"
             [ $# -gt 1 ] && printf '      %s→ %s%s\n' "$C_DIM" "$2" "$C_OFF"; return 0; }
 section() { printf '\n%s%s%s\n' "$C_BOLD" "$1" "$C_OFF"; }
-die()     { printf '%smini:%s %s\n' "$C_NO" "$C_OFF" "$1" >&2; exit 1; }
+die()     { printf '%sdev:%s %s\n' "$C_NO" "$C_OFF" "$1" >&2; exit 1; }
 
 # Executables only: `command -v` also finds functions, and in verbose mode
 # ssh, git and friends are logging functions, so a missing tool would pass.
@@ -42,11 +42,11 @@ is_server() { [ "$(pmset -g 2>/dev/null | awk '$1 == "sleep" { print $2; exit }'
 
 # Reachability with a short timeout, so failures are fast and legible rather
 # than a 30-second TCP hang.
-reachable() { ssh -o ConnectTimeout=5 -o BatchMode=yes "$MINI_HOST" true 2>/dev/null; }
+reachable() { ssh -o ConnectTimeout=5 -o BatchMode=yes "$DEV_HOST" true 2>/dev/null; }
 
 require_reachable() {
     reachable && return 0
-    die "cannot reach '$MINI_HOST' — is Tailscale up and the Mini awake?"
+    die "cannot reach '$DEV_HOST' — is Tailscale up and the Mini awake?"
 }
 
 # Run a bash command line on the Mini, in a login shell so Homebrew is on PATH.
@@ -59,8 +59,8 @@ require_reachable() {
 # backslashes differently from bash's — and %q output is full of them. The
 # words `bash -ls` read the same in any shell.
 remote_bash() {
-    debug "sending to $MINI_HOST's bash: $1"
-    printf '%s\n' "$1" | ssh -o BatchMode=yes "$MINI_HOST" 'bash -ls'
+    debug "sending to $DEV_HOST's bash: $1"
+    printf '%s\n' "$1" | ssh -o BatchMode=yes "$DEV_HOST" 'bash -ls'
 }
 
 # Session names keep to letters, digits, _ and -, everything else becoming _.
@@ -71,19 +71,19 @@ remote_bash() {
 session_name() { printf '%s' "$1" | LC_ALL=C tr -c 'A-Za-z0-9_-' '_'; }
 
 # --- verbose ---------------------------------------------------------------
-# `mini -v <command>` (or MINI_VERBOSE=1): what mini decided and why, and every
+# `dev -v <command>` (or DEV_VERBOSE=1): what dev decided and why, and every
 # call it makes to another machine or service, on stderr so the normal output
 # stays as it is. Secrets are masked: this output lands in terminals and
 # transcripts, and those sync.
-MINI_VERBOSE="${MINI_VERBOSE:-0}"
+DEV_VERBOSE="${DEV_VERBOSE:-0}"
 if [ -t 2 ]; then D_DIM=$'\033[2m'; D_OFF=$'\033[0m'; else D_DIM=''; D_OFF=''; fi
 # Debug output gets its own copy of stderr: many calls silence theirs with
 # 2>/dev/null, and a traced call's debug line would vanish with it.
 exec 3>&2
 
 debug() {
-    [ "$MINI_VERBOSE" = 1 ] || return 0
-    printf '%s[mini] %s%s\n' "$D_DIM" "$*" "$D_OFF" \
+    [ "$DEV_VERBOSE" = 1 ] || return 0
+    printf '%s[dev] %s%s\n' "$D_DIM" "$*" "$D_OFF" \
         | sed -E 's/(X-API-Key:(\\ | )?)[^ ]+/\1***/g; s/(<apikey>)[^<]*/\1***/g' >&3
 }
 
@@ -104,46 +104,46 @@ COMMANDS="connect doctor preflight land pair ls run shell status repos"
 
 usage() {
     cat <<USAGE
-${C_BOLD}mini${C_OFF} — control the always-on Mac Mini
+${C_BOLD}dev${C_OFF} — control the always-on Mac Mini
 
-  ${C_BOLD}mini${C_OFF}                    in ~/projects/<p>: the <p> session, started there;
-                          anywhere else: the '$MINI_SESSION' session
-  ${C_BOLD}mini${C_OFF} <name>             attach to, or create, the <name> session
-  ${C_BOLD}mini connect${C_OFF} [name]     the same, spelled out (and for names that are commands)
-  ${C_BOLD}mini ls${C_OFF}                 list sessions without attaching
-  ${C_BOLD}mini run${C_OFF} <command>      run one command remotely, no session
-  ${C_BOLD}mini shell${C_OFF}              a plain login shell, no tmux
-  ${C_BOLD}mini status${C_OFF}             quick health summary
-  ${C_BOLD}mini pair${C_OFF}               wire Syncthing to the Mini, both ends
-  ${C_BOLD}mini doctor${C_OFF}             full check of every link, with remedies
-  ${C_BOLD}mini preflight${C_OFF}          before going offline: pull everything down
-  ${C_BOLD}mini land${C_OFF}               after coming back: push up, catch the Mini up
-  ${C_BOLD}mini repos${C_OFF} [cmd]         the repos ~/projects should hold (mini repos help)
-  ${C_BOLD}mini help${C_OFF}               this
+  ${C_BOLD}dev${C_OFF}                     in ~/projects/<p>: the <p> session, started there;
+                          anywhere else: the '$DEV_SESSION' session
+  ${C_BOLD}dev${C_OFF} <name>              attach to, or create, the <name> session
+  ${C_BOLD}dev connect${C_OFF} [name]      the same, spelled out (and for names that are commands)
+  ${C_BOLD}dev ls${C_OFF}                  list sessions without attaching
+  ${C_BOLD}dev run${C_OFF} <command>       run one command remotely, no session
+  ${C_BOLD}dev shell${C_OFF}               a plain login shell, no tmux
+  ${C_BOLD}dev status${C_OFF}              quick health summary
+  ${C_BOLD}dev pair${C_OFF}                wire Syncthing to the Mini, both ends
+  ${C_BOLD}dev doctor${C_OFF}              full check of every link, with remedies
+  ${C_BOLD}dev preflight${C_OFF}           before going offline: pull everything down
+  ${C_BOLD}dev land${C_OFF}                after coming back: push up, catch the Mini up
+  ${C_BOLD}dev repos${C_OFF} [cmd]         the repos ~/projects should hold (dev repos help)
+  ${C_BOLD}dev help${C_OFF}                this
 
-  ${C_BOLD}mini -v${C_OFF} <command>     verbose: what mini decides and every remote call (MINI_VERBOSE=1)
+  ${C_BOLD}dev -v${C_OFF} <command>      verbose: what dev decides and every remote call (DEV_VERBOSE=1)
 
-Host is '$MINI_HOST'; override with \$MINI_HOST.
+Host is '$DEV_HOST'; override with \$DEV_HOST.
 USAGE
 }
 
 # -v/--verbose only before the command: after it, arguments belong to the
-# command (`mini run ls -v` is ls's -v).
+# command (`dev run ls -v` is ls's -v).
 while [ $# -gt 0 ]; do
     case "$1" in
-        -v|--verbose) MINI_VERBOSE=1; shift ;;
+        -v|--verbose) DEV_VERBOSE=1; shift ;;
         *) break ;;
     esac
 done
-export MINI_VERBOSE
+export DEV_VERBOSE
 
-if [ "$MINI_VERBOSE" = 1 ]; then
+if [ "$DEV_VERBOSE" = 1 ]; then
     for _t in ssh curl gh tmux syncthing git; do
         eval "$_t() { _trace $_t \"\$@\"; }"
     done
     unset _t
     debug "dotfiles at $(command yadm log -1 --format='%h (%cr)' 2>/dev/null || echo unknown)"
-    debug "host '$MINI_HOST' resolves to $(dscacheutil -q host -a name "$MINI_HOST" 2>/dev/null | awk '/^ip_address/ { print $2; exit }' || true)"
+    debug "host '$DEV_HOST' resolves to $(dscacheutil -q host -a name "$DEV_HOST" 2>/dev/null | awk '/^ip_address/ { print $2; exit }' || true)"
     _sleep=$(pmset -g 2>/dev/null | awk '$1 == "sleep" { print $2; exit }')
     if is_server; then
         debug "this machine is the server: pmset sleep is ${_sleep:-unknown}"
@@ -186,15 +186,15 @@ _session_exists() {
     if is_server; then
         tmux has-session -t "$target" 2>/dev/null
     else
-        ssh -o ConnectTimeout=5 -o BatchMode=yes "$MINI_HOST" tmux has-session -t "$target" 2>/dev/null
+        ssh -o ConnectTimeout=5 -o BatchMode=yes "$DEV_HOST" tmux has-session -t "$target" 2>/dev/null
     fi
 }
 
 if ! printf '%s\n' $COMMANDS | grep -qx "$cmd"; then
     case "$cmd" in
-        -*) die "unknown option '$cmd' (mini help)" ;;
+        -*) die "unknown option '$cmd' (dev help)" ;;
     esac
-    # Not a command, so a session: `mini magpie` is `mini connect magpie`. A
+    # Not a command, so a session: `dev magpie` is `dev connect magpie`. A
     # near-miss of a command is likelier a typo than a new session, so it
     # only counts as a session when one by that name already exists.
     near=$(_near_command "$cmd")
@@ -204,13 +204,13 @@ if ! printf '%s\n' $COMMANDS | grep -qx "$cmd"; then
         debug "'$cmd' is not a command, so it names a session"
     fi
     if [ -n "$near" ] && ! _session_exists "$cmd"; then
-        die "'$cmd' is not a command or a session — did you mean 'mini $near'? (to start a session called '$cmd': mini connect $cmd)"
+        die "'$cmd' is not a command or a session — did you mean 'dev $near'? (to start a session called '$cmd': dev connect $cmd)"
     fi
     set -- "$cmd" "$@"
     cmd=connect
 fi
 
-[ -f "$MINI_LIB/$cmd.sh" ] || die "missing $MINI_LIB/$cmd.sh (try: yadm pull)"
+[ -f "$DEV_LIB/$cmd.sh" ] || die "missing $DEV_LIB/$cmd.sh (try: yadm pull)"
 # shellcheck source=/dev/null
-. "$MINI_LIB/$cmd.sh"
-"mini_$cmd" "$@"
+. "$DEV_LIB/$cmd.sh"
+"dev_$cmd" "$@"

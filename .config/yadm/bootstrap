@@ -172,7 +172,7 @@ configure_server() {
 }
 
 # Tailscale's MagicDNS names a machine after its hostname when it first signs
-# in, and ~/.ssh/config.mini and `mini` reach the server as plain "mini". So
+# in, and ~/.ssh/config.mini and `dev` reach the server as plain "mini". So
 # this has to run before Tailscale sign-in; renaming later does not rename the
 # tailnet node.
 set_hostname() {
@@ -403,18 +403,18 @@ register_github_key
 ## Projects ################################################
 # After the GitHub login above: private repos need it. The list is one of the
 # decrypted secrets, so a Mac without it yet has nothing to do here.
-if [ -x "$HOME/bin/mini" ] && [ -f "$HOME/.config/mini/repos" ]; then
+if [ -x "$HOME/bin/dev" ] && [ -f "$HOME/.config/dev/repos" ]; then
     echo_ok "Checking ~/projects against the repo list..."
-    "$HOME/bin/mini" repos status
+    "$HOME/bin/dev" repos status
     case $? in
         0) ;;
         2) if ask "Clone the missing repos into ~/projects? "; then
-               "$HOME/bin/mini" repos sync \
-                   || todo "Some repos did not clone. Retry with: mini repos sync"
+               "$HOME/bin/dev" repos sync \
+                   || todo "Some repos did not clone. Retry with: dev repos sync"
            else
-               todo "Repos not cloned. Run: mini repos sync"
+               todo "Repos not cloned. Run: dev repos sync"
            fi ;;
-        *) todo "Could not check the repo list. Run: mini repos status" ;;
+        *) todo "Could not check the repo list. Run: dev repos status" ;;
     esac
 fi
 
@@ -428,7 +428,7 @@ if command_exists syncthing; then
     fi
     # Pairing needs the other machine reachable over ssh, which bootstrap
     # cannot guarantee, so it is a separate explicit step.
-    echo_warn "Once Tailscale is up and the Mini is reachable: mini pair"
+    echo_warn "Once Tailscale is up and the Mini is reachable: dev pair"
 fi
 
 ## Server mode: what needs a person #########################

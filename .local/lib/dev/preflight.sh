@@ -1,11 +1,11 @@
-# mini preflight — prepare this machine to work without the Mini.
+# dev preflight — prepare this machine to work without the Mini.
 #
 # Under the remote-first model the Mini is the source of truth and this
 # machine's copies are read-mostly. Run before travelling.
 #
 # Never commits, never pushes, never touches a dirty tree.
 
-mini_preflight() {
+dev_preflight() {
     local projects_dir="${PROJECTS_DIR:-$HOME/projects}"
     local clean=0 skipped=0 failed=0
 

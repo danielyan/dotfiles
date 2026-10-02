@@ -1,4 +1,4 @@
-# mini land — reconcile after working offline. The counterpart to preflight.
+# dev land — reconcile after working offline. The counterpart to preflight.
 #
 # Most of the system heals itself on reconnect: Syncthing catches ~/.claude up,
 # atuin syncs on the next command, iCloud handles the vault. Two things do not.
@@ -22,7 +22,7 @@ _confirm() {
     [ "$reply" = "y" ] || [ "$reply" = "Y" ]
 }
 
-mini_land() {
+dev_land() {
     is_server && die "run this from the Air; the Mini is what gets caught up"
     require_reachable
 
@@ -83,7 +83,7 @@ mini_land() {
     section "Catching up the Mini"
     # One ssh round trip rather than one per repo.
     local pulled
-    pulled=$(ssh -o BatchMode=yes "$MINI_HOST" -- bash -lc "'
+    pulled=$(ssh -o BatchMode=yes "$DEV_HOST" -- bash -lc "'
         cd \"\$HOME\" || exit 1
         command -v yadm >/dev/null && yadm pull --ff-only --quiet 2>/dev/null \
             && echo \"PULLED:dotfiles\"
@@ -105,12 +105,12 @@ mini_land() {
     while IFS= read -r line; do
         [ -z "$line" ] && continue
         case "$line" in
-            PULLED:*) ok "${line#PULLED:} updated on $MINI_HOST"; changed=$((changed+1)) ;;
-            DIRTY:*)  maybe "${line#DIRTY:} — dirty on $MINI_HOST, not pulled" ;;
-            FAILED:*) no "${line#FAILED:} — pull failed on $MINI_HOST" ;;
+            PULLED:*) ok "${line#PULLED:} updated on $DEV_HOST"; changed=$((changed+1)) ;;
+            DIRTY:*)  maybe "${line#DIRTY:} — dirty on $DEV_HOST, not pulled" ;;
+            FAILED:*) no "${line#FAILED:} — pull failed on $DEV_HOST" ;;
         esac
     done <<< "$pulled"
-    [ "$changed" -eq 0 ] && ok "$MINI_HOST was already up to date"
+    [ "$changed" -eq 0 ] && ok "$DEV_HOST was already up to date"
 
     section "Claude state"
     if have syncthing && curl -sf -m 3 -o /dev/null "$SYNCTHING_API/rest/noauth/health"; then
@@ -129,9 +129,9 @@ mini_land() {
 
     # The part that is easy to miss: sessions predate the commits just pulled.
     if [ "$changed" -gt 0 ]; then
-        section "Stale sessions on $MINI_HOST"
+        section "Stale sessions on $DEV_HOST"
         local sessions
-        sessions=$(ssh -o BatchMode=yes "$MINI_HOST" \
+        sessions=$(ssh -o BatchMode=yes "$DEV_HOST" \
             'tmux ls -F "#{session_name} (#{session_windows} windows, started #{t:session_created})" 2>/dev/null')
         if [ -n "$sessions" ]; then
             printf '%s\n' "$sessions" | sed 's|^|      |'
@@ -143,5 +143,5 @@ mini_land() {
     fi
 
     section "Done"
-    printf '  mini            attach and carry on\n'
+    printf '  dev             attach and carry on\n'
 }

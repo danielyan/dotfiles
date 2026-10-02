@@ -1,9 +1,9 @@
-# mini status — the fast answer to "is everything fine?".
+# dev status — the fast answer to "is everything fine?".
 #
-# `mini doctor` is thorough and slow because it checks every link and tells you
+# `dev doctor` is thorough and slow because it checks every link and tells you
 # how to fix each one. This is the one-screen version for daily use.
 
-mini_status() {
+dev_status() {
     local problems=0
     # Wrap the failure helper so `status` can be used in a script.
     _bad() { no "$@"; problems=$((problems+1)); }
@@ -18,10 +18,10 @@ mini_status() {
     else
         if reachable; then
             local n
-            n=$(ssh -o BatchMode=yes "$MINI_HOST" 'tmux ls 2>/dev/null | wc -l' 2>/dev/null | tr -d ' ')
-            ok "$MINI_HOST reachable, ${n:-0} session(s)"
+            n=$(ssh -o BatchMode=yes "$DEV_HOST" 'tmux ls 2>/dev/null | wc -l' 2>/dev/null | tr -d ' ')
+            ok "$DEV_HOST reachable, ${n:-0} session(s)"
         else
-            _bad "$MINI_HOST unreachable" "mini doctor"
+            _bad "$DEV_HOST unreachable" "dev doctor"
         fi
     fi
 
@@ -29,7 +29,7 @@ mini_status() {
         local conflicts
         conflicts=$(find "$HOME/.claude" -name '*sync-conflict*' 2>/dev/null | wc -l | tr -d ' ')
         [ "${conflicts:-0}" -eq 0 ] && ok "syncthing running, no conflicts" \
-            || maybe "syncthing running, $conflicts conflict file(s)" "mini doctor"
+            || maybe "syncthing running, $conflicts conflict file(s)" "dev doctor"
     else
         _bad "syncthing not running" "brew services start syncthing"
     fi

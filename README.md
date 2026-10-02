@@ -57,10 +57,10 @@ It's wired into `~/.ssh/config` via an `Include` line that `bootstrap` adds.
 From the Air (or the Mini itself), type:
 
 ```
-mini
+dev
 ```
 
-or hit `cmd+shift+m` in Ghostty. That's `bin/mini`, a plain bash script, which
+or hit `cmd+shift+m` in Ghostty. That's `bin/dev`, a plain bash script, which
 for the bare form runs:
 
 ```
@@ -81,7 +81,7 @@ Three things are happening:
 
 The consequence worth internalising: **you never "move" work between machines.**
 A build running on the Mini keeps running while you close the Air and drive home.
-You sit down at the Mini's monitor, run `mini`, and you're looking at the same
+You sit down at the Mini's monitor, run `dev`, and you're looking at the same
 session — same scrollback, same running processes.
 
 ---
@@ -116,7 +116,7 @@ never tracked.
 | `.config/vscode/mcp.json` | VSCode MCP server token (symlinked into place) |
 | `projects/.env` | project-local secrets |
 | `.config/fresco/credentials.json` | Fresco's source API keys (its settings, `config.json`, are tracked in the clear) |
-| `.config/mini/repos` | the repos `mini repos sync` clones into `~/projects` |
+| `.config/dev/repos` | the repos `dev repos sync` clones into `~/projects` |
 
 Claude's MCP definitions are kept apart from `~/.claude.json` because that file
 also holds Claude Code's own runtime state, which Syncthing owns. `bootstrap`
@@ -176,49 +176,49 @@ other machine never looks — silent failure.
 **`.stignore` is not synced.** Syncthing treats it as an internal file, so each
 machine needs its own copy from yadm. That makes ordering load-bearing:
 `yadm clone` on the Mini *before* pairing, or first sync pulls `plugins/` and
-`cache/` precisely because the ignore file isn't there yet. `mini pair` enforces
+`cache/` precisely because the ignore file isn't there yet. `dev pair` enforces
 this rather than trusting you to remember.
 
-## The `mini` command
+## The `dev` command
 
 Everything to do with the Mini is one command. It is **bash, not fish** — so it
 works over ssh, in any shell, and on a machine that hasn't been configured yet.
 
 | Command | Does |
 |---|---|
-| `mini` | In `~/projects/<p>`: the `<p>` session, started in that folder. Anywhere else: `main` |
-| `mini <name>` | Attach to, or create, the `<name>` session (a project's starts in its folder) |
-| `mini connect [name]` | The same, spelled out; also for a session whose name is a command |
-| `mini ls` | List sessions without attaching |
-| `mini run <cmd>` | Run one command remotely and come straight back |
-| `mini shell` | A plain login shell, no tmux |
-| `mini status` | Fast health summary; non-zero exit if anything is wrong |
-| `mini doctor` | Check every link and print the remedy for each failure |
-| `mini pair` | Wire Syncthing to the Mini, both ends, idempotently |
-| `mini preflight` | Before going offline: pull everything down |
-| `mini land` | After coming back: push up, catch the Mini up |
-| `mini repos` | The repos `~/projects` should hold: `add`, `remove`, `list`, `sync` (list kept encrypted) |
-| `mini help` | Usage |
-| `mini -v <command>` | Verbose: why it chose what it did, and every call to another machine, on stderr with keys masked (`MINI_VERBOSE=1` too) |
+| `dev` | In `~/projects/<p>`: the `<p>` session, started in that folder. Anywhere else: `main` |
+| `dev <name>` | Attach to, or create, the `<name>` session (a project's starts in its folder) |
+| `dev connect [name]` | The same, spelled out; also for a session whose name is a command |
+| `dev ls` | List sessions without attaching |
+| `dev run <cmd>` | Run one command remotely and come straight back |
+| `dev shell` | A plain login shell, no tmux |
+| `dev status` | Fast health summary; non-zero exit if anything is wrong |
+| `dev doctor` | Check every link and print the remedy for each failure |
+| `dev pair` | Wire Syncthing to the Mini, both ends, idempotently |
+| `dev preflight` | Before going offline: pull everything down |
+| `dev land` | After coming back: push up, catch the Mini up |
+| `dev repos` | The repos `~/projects` should hold: `add`, `remove`, `list`, `sync` (list kept encrypted) |
+| `dev help` | Usage |
+| `dev -v <command>` | Verbose: why it chose what it did, and every call to another machine, on stderr with keys masked (`DEV_VERBOSE=1` too) |
 
-`bin/mini` is a dispatcher; each subcommand is a file in `~/.local/lib/mini/`
-defining a `mini_<name>` function. Adding a subcommand means adding a file.
+`bin/dev` is a dispatcher; each subcommand is a file in `~/.local/lib/dev/`
+defining a `dev_<name>` function. Adding a subcommand means adding a file.
 
 Two behaviours worth knowing:
 
-- **It knows which machine it's on.** On the Mini, `mini connect` attaches to a
-  local tmux session rather than ssh-ing to itself, and `mini run` just runs the
+- **It knows which machine it's on.** On the Mini, `dev connect` attaches to a
+  local tmux session rather than ssh-ing to itself, and `dev run` just runs the
   command. `doctor` checks the Mini for live sessions and iCloud eviction, and
   the Air for whether it can reach the Mini at all.
 - **Anything that is not a command is a session name**, but a near-miss of a
-  command is treated as a typo: `mini doctr` asks whether you meant `mini doctor`
-  unless a session called `doctr` already exists (`mini connect doctr` starts one
+  command is treated as a typo: `dev doctr` asks whether you meant `dev doctor`
+  unless a session called `doctr` already exists (`dev connect doctr` starts one
   anyway). Names keep to letters, digits, `_` and `-`; anything else becomes `_`,
   since tmux reads `.` and `:` in a target as separators.
 
-`$MINI_HOST` overrides the target host, `$MINI_SESSION` the default session.
+`$DEV_HOST` overrides the target host, `$DEV_SESSION` the default session.
 
-### mini doctor
+### dev doctor
 
 Checks every link and prints the exact remedy for anything broken. Read-only and
 safe to run at any time; exits non-zero if any check failed.
@@ -239,16 +239,16 @@ fine, they just land in a directory the other machine never reads.
 
 ### Tests
 
-`.local/lib/mini/tests.sh` stubs ssh and mosh so the remote paths can be checked
+`.local/lib/dev/tests.sh` stubs ssh and mosh so the remote paths can be checked
 without a reachable Mini — argument quoting, dispatch, and error handling.
 
 ```
-bash ~/.local/lib/mini/tests.sh
+bash ~/.local/lib/dev/tests.sh
 ```
 
 ## Going offline and coming back
 
-### Before: `mini preflight`
+### Before: `dev preflight`
 
 Fast-forwards every repo under `~/projects` with `--ff-only`, skipping any that
 are dirty or have no remote rather than risking a conflict. Triggers a Syncthing
@@ -257,7 +257,7 @@ iCloud evicts cold files and leaves a placeholder that fails to read offline.
 
 Never commits, pushes, or touches a dirty tree. Exits non-zero if a pull failed.
 
-### After: `mini land`
+### After: `dev land`
 
 Coming home inverts the model — for the duration of the trip, the *Air* was
 authoritative. Most of that reconciles itself: Syncthing catches `~/.claude` up,
@@ -272,7 +272,7 @@ many commits, asks once, pushes, then catches the Mini up over ssh in a single
 round trip. Dirty repos it reports and leaves alone.
 
 **The Mini's tmux sessions.** This is the one that's easy to miss, precisely
-because the model otherwise works so well: you run `mini`, land in the session
+because the model otherwise works so well: you run `dev`, land in the session
 you left days ago, and it *feels* like continuity. But those shells sit in
 working trees at the old commits, and anything long-running in them — a dev
 server, a file watcher — is executing pre-trip code. `land` lists any sessions
@@ -310,18 +310,18 @@ Screen Sharing and automatic login have no reliable scriptable equivalent and
 stay manual.
 
 Pairing is deliberately *not* in bootstrap: it needs the far end reachable over
-ssh, which bootstrap can't guarantee. That's `mini pair`, run later.
+ssh, which bootstrap can't guarantee. That's `dev pair`, run later.
 
 ## When something breaks
 
-Start with `mini doctor` — it checks every link and names the fix. The cases below
+Start with `dev doctor` — it checks every link and names the fix. The cases below
 are the ones it can't resolve for you.
 
-**`mini` says it can't reach the host.** Check `tailscale status` on both ends.
+**`dev` says it can't reach the host.** Check `tailscale status` on both ends.
 If the Mini is up but unreachable it usually rebooted and hasn't logged in —
 Screen Share in and check.
 
-**A tmux session vanished.** `mini ls` lists what's actually running. Sessions
+**A tmux session vanished.** `dev ls` lists what's actually running. Sessions
 survive detach and network loss, but not a Mini reboot. That's what `autorestart`
 plus a login item mitigates, not eliminates.
 
@@ -329,7 +329,7 @@ plus a login item mitigates, not eliminates.
 on both machines at once — `history.jsonl` is append-only per machine and has no
 merge semantics. Rare under remote-first. Keep the larger file, delete the other.
 
-**`mini preflight` skipped a repo.** By design: it won't pull into a dirty tree.
+**`dev preflight` skipped a repo.** By design: it won't pull into a dirty tree.
 Commit or stash, then re-run.
 
 **Claude can't find an old session on the other machine.** Check that
@@ -343,15 +343,15 @@ never line up.
 
 ```
 .config/fish/            shell config, prompt, abbreviations
-.config/fish/completions/ mini.fish — completions only, no logic
+.config/fish/completions/ dev.fish — completions only, no logic
 .config/tmux/            tmux.conf — long scrollback, detach-safe
 .config/ghostty/         terminal config, cmd+shift+m keybind
 .config/yadm/bootstrap   provisioning, idempotent, server mode by yadm class
 .config/vscode/          settings + extension list
 .claude/                 CLAUDE.md, settings.json, skills, .stignore
 .ssh/config.mini         Mini host config (no key material)
-bin/mini                 the one command: connect, doctor, preflight, ...
-.local/lib/mini/         its subcommands, one file each, plus tests.sh
+bin/dev                 the one command: connect, doctor, preflight, ...
+.local/lib/dev/         its subcommands, one file each, plus tests.sh
 bin/mac-setup            one-liner bootstrap for a fresh Mac
 SETUP.md                 start-to-finish setup for both machines
 bin/mac-defaults         macOS system defaults
