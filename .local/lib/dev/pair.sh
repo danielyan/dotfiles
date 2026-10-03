@@ -63,7 +63,7 @@ dev_pair() {
     section "Checking the ignore file on both ends"
     [ -f "$HOME/.claude/.stignore" ] || die "~/.claude/.stignore missing locally — yadm checkout .claude/.stignore"
     ok "local .stignore present"
-    ssh -o BatchMode=yes "$DEV_HOST" 'test -f ~/.claude/.stignore' \
+    remote_ok 'test -f ~/.claude/.stignore' \
         || die "$DEV_HOST has no ~/.claude/.stignore — run 'yadm clone' there FIRST, or first sync will pull plugins/ and cache/"
     ok "$DEV_HOST .stignore present"
 

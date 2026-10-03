@@ -66,17 +66,22 @@ check "run with no args explains usage" "usage: dev run" "$out"
 
 echo "connect: the stubbed Mini"
 # Sessions "running" on the stubbed Mini are lines of $cs/running, as
-# name|attached-clients: has-session and `tmux ls` both answer from it.
+# name|attached-clients: has-session and `tmux ls` both answer from it. Like
+# the real Mini (Tailscale SSH), every remote command exits 0, so only what a
+# command prints can tell dev how it went.
 cs=$(mktemp -d)
 cat > "$cs/ssh" <<STUB
 #!/usr/bin/env bash
 for a in "\$@"; do [ "\$a" = true ] && exit 0; done
-case "\$*" in *"has-session -t ="*)
-    all="\$*"; name=\${all##*has-session -t =}; name=\${name%% *}
-    cut -d'|' -f1 "$cs/running" | grep -qx -- "\$name"; exit \$? ;;
-esac
 if [ "\${*: -1}" = "bash -ls" ]; then
-    case "\$(cat)" in *"tmux ls"*) cat "$cs/running" ;; esac
+    stdin=\$(cat)
+    case "\$stdin" in
+        *"tmux ls"*) cat "$cs/running" ;;
+        *"has-session -t ="*)
+            name=\${stdin##*has-session -t =}; name=\${name%%;*}
+            cut -d'|' -f1 "$cs/running" | grep -qx -- "\$name" && echo __dev_ok ;;
+        *"test -d "*) eval "\$stdin" ;;
+    esac
     exit 0
 fi
 echo "SSH_ARGS: \$*"
@@ -97,9 +102,22 @@ out=$(cd "$DEV_PROJECTS_DIR/fresco/Sources" && C)
 check  "in a project, its running session" "tmux new -A -s fresco" "$out"
 refute "attaching, so no start folder"      " -c " "$out"
 running main
-out=$(cd "$DEV_PROJECTS_DIR/fresco" && C)
-check  "a project with no session gets main" "tmux new -A -s main" "$out"
-refute "and its session is not started"      "-s fresco" "$out"
+out=$(cd "$DEV_PROJECTS_DIR/fresco/Sources" && C)
+check  "a project with no session starts it in the project" \
+       "tmux new -A -s fresco -c $DEV_PROJECTS_DIR/fresco" "$out"
+out=$(cd "$DEV_PROJECTS_DIR/my.proj" && C)
+check  "a cleaned name still starts in its folder" \
+       "tmux new -A -s my_proj -c $DEV_PROJECTS_DIR/my.proj" "$out"
+mkdir -p "$DEV_PROJECTS_DIR/gone/sub"
+out=$(cd "$DEV_PROJECTS_DIR/gone/sub" && rmdir "$DEV_PROJECTS_DIR/gone/sub" "$DEV_PROJECTS_DIR/gone" && C); rc=$?
+check  "a project folder missing on the Mini is boxed" "║  ⚠  NO SUCH FOLDER ON mini" "$out"
+check  "naming the folder"                   "$DEV_PROJECTS_DIR/gone does not exist on mini." "$out"
+check  "and closing the box"                 "╚═" "$out"
+out=$(cd "$DEV_PROJECTS_DIR/my.proj" && rmdir "$DEV_PROJECTS_DIR/my.proj" && DEV_LIB="$HOME/.local/lib/dev" HOME="$stub_dir" C)
+mkdir -p "$DEV_PROJECTS_DIR/my.proj"
+check  "with home shortened to ~"            "║  ~/projects/my.proj does not exist" "$out"
+refute "and attaches nothing"                "MOSH_ARGS" "$out"
+check_rc "exiting 1"                         1 "$rc"
 running main scratch
 check  "outside projects, the folder's own name" "tmux new -A -s scratch" "$(cd "$cs/scratch" && C)"
 running main projects
@@ -652,10 +670,15 @@ vb=$(mktemp -d)
 cat > "$vb/ssh" <<STUB
 #!/usr/bin/env bash
 for a in "\$@"; do [ "\$a" = true ] && exit 0; done
-case "\$*" in *"has-session -t =magpie"*) exit 0 ;; *has-session*) exit 1 ;; esac
 if [ "\${*: -1}" = "bash -ls" ]; then
     in=\$(cat)
-    case "\$in" in *"tmux ls"*) echo "magpie|0" ;; *) printf 'SSH_STDIN: %s\n' "\$in" ;; esac
+    case "\$in" in
+        *"tmux ls"*) echo "magpie|0" ;;
+        *"has-session -t =magpie;"*) echo __dev_ok ;;
+        *has-session*) ;;
+        *"test -d "*) eval "\$in" ;;
+        *) printf 'SSH_STDIN: %s\n' "\$in" ;;
+    esac
     exit 0
 fi
 echo "SSH_ARGS: \$*"
@@ -688,7 +711,7 @@ err=$(V -v magpie 2>&1 >/dev/null)
 check "connect says the session exists" "'magpie' exists on mini: attaching" "$err"
 check "and the command it runs" '[dev] $ mosh mini -- tmux new -A -s magpie' "$err"
 err=$(cd "$DEV_PROJECTS_DIR/fresco" && V -v 2>&1 >/dev/null)
-check "connect says why a folder's session was passed over" "no 'fresco' session on mini for $DEV_PROJECTS_DIR/fresco: 'main' instead" "$err"
+check "connect says it starts the project's session in its folder" "starting 'fresco' in $DEV_PROJECTS_DIR/fresco" "$err"
 err=$(V -v my.proj 2>&1 >/dev/null)
 check "connect explains a renamed session" "renamed 'my.proj' to 'my_proj'" "$err"
 err=$(cd "$DEV_PROJECTS_DIR" && V -v 2>&1 >/dev/null)

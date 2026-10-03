@@ -186,7 +186,7 @@ works over ssh, in any shell, and on a machine that hasn't been configured yet.
 
 | Command | Does |
 |---|---|
-| `dev` | The session named after this folder (in `~/projects/<p>`: `<p>`) if it is running; otherwise `main`, started if need be |
+| `dev` | In `~/projects/<p>` or below, the `<p>` session, started in `~/projects/<p>` if need be; if the Mini has no such folder, a boxed warning and nothing is attached. Elsewhere, the session named after this folder if it is running; otherwise `main`, started if need be |
 | `dev <name>` | Attach to the `<name>` session. Typos and partial names find the running session meant (`magpei`, `mag` → `magpie`); a name several could mean opens the picker with just those. A missing one is not started silently: `dev` says so and offers to, matching project folders the same way (`fresko` → `fresco`, started in its folder). `main` always just starts |
 | `dev connect` | Pick a running session from a list: type to filter (letters in order match too: `mgp` → `magpie`), ↑↓ to move, enter to attach, esc to cancel |
 | `dev ls` | List sessions without attaching |

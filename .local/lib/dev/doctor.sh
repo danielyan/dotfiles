@@ -196,7 +196,7 @@ dev_doctor() {
             fi
 
             if _doctor_spin "$area" "looking for tmux on $DEV_HOST" \
-                    ssh -o BatchMode=yes "$DEV_HOST" 'command -v tmux' >/dev/null 2>&1; then
+                    remote_ok 'command -v tmux'; then
                 local sessions
                 sessions=$(_doctor_spin "$area" "counting sessions on $DEV_HOST" \
                     ssh -o BatchMode=yes "$DEV_HOST" 'tmux ls 2>/dev/null | wc -l' | tr -d ' ')
@@ -207,7 +207,7 @@ dev_doctor() {
 
             if have mosh; then
                 _doctor_spin "$area" "looking for mosh-server on $DEV_HOST" \
-                    ssh -o BatchMode=yes "$DEV_HOST" 'command -v mosh-server' >/dev/null 2>&1 \
+                    remote_ok 'command -v mosh-server' \
                     && _p "mosh available on both ends" \
                     || _w "mosh-server missing on mini" "dev run brew install mosh"
             fi

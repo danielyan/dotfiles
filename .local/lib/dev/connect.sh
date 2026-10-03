@@ -4,9 +4,11 @@
 # session on the Mini, so attaching from anywhere drops you exactly where you
 # left off, including a Claude Code conversation mid-task.
 #
-#   dev                    the session named after the folder you are in, if one
-#                          is running: in ~/projects/<p>/..., <p>; elsewhere the
-#                          folder's own name. Otherwise main, started if need be
+#   dev                    in ~/projects/<p>/..., the <p> session, started in
+#                          ~/projects/<p> if need be; if the Mini has no such
+#                          folder, dev says so in a box and attaches nothing.
+#                          Elsewhere, the session named after the folder if one
+#                          is running. Otherwise main, started if need be
 #   dev <name>             the <name> session. Typos and partial names find the
 #                          running session meant (magpei, mag → magpie); a name
 #                          several could mean opens the picker with just those.
@@ -16,9 +18,10 @@
 #   dev connect            pick a running session: type to filter, arrows to
 #                          move, enter to attach, esc to cancel
 #
-# Only main, and a yes to the offer, start a session. A session started for a project begins in ~/projects/<name>; the path
-# is the same on both machines (same username, and `dev repos` clones the same
-# repos).
+# Only main, a project's own folder, and a yes to the offer start a session. A
+# session started for a project begins in ~/projects/<name>; the path is the
+# same on both machines (same username, and `dev repos` clones the same repos),
+# but whether the folder is there is asked of the Mini.
 
 DEV_PROJECTS_DIR="${DEV_PROJECTS_DIR:-$HOME/projects}"
 
@@ -43,10 +46,32 @@ _here_name() {
     printf '%s' "${PWD##*/}"
 }
 
+# Is <dir> a folder on the Mini? Asked of the Mini itself: a project can be
+# cloned on one machine and not the other.
+_dir_on_host() { # <dir>
+    if is_server; then
+        [ -d "$1" ]
+    else
+        remote_ok "test -d $(printf '%q' "$1")"
+    fi
+}
+
 # Where a session would start: a project's folder, when the name needed no
-# changing (the path crosses ssh unquoted, like the name) and the folder exists.
+# changing (the path crosses ssh unquoted, like the name) and the folder exists
+# on the Mini.
 _start_dir() { # <name as given> <session>
-    [ "$1" = "$2" ] && [ -d "$DEV_PROJECTS_DIR/$1" ] && printf '%s' "$DEV_PROJECTS_DIR/$1"
+    [ "$1" = "$2" ] && _dir_on_host "$DEV_PROJECTS_DIR/$1" && printf '%s' "$DEV_PROJECTS_DIR/$1"
+}
+
+# <line>... in a double-line box on stderr, sized to the longest line.
+_boxed() {
+    local LC_ALL=en_US.UTF-8 line width=0 bar
+    for line; do [ "${#line}" -gt "$width" ] && width=${#line}; done
+    printf -v bar '%*s' $((width + 4)) ''
+    bar=${bar// /═}
+    printf '%s╔%s╗\n' "$C_WARN" "$bar" >&2
+    for line; do printf '║  %s%*s  ║\n' "$line" $((width - ${#line})) '' >&2; done
+    printf '╚%s╝%s\n' "$bar" "$C_OFF" >&2
 }
 
 # The terminal to ask on. DEV_TTY points it at a file of keystrokes in tests.
@@ -91,10 +116,38 @@ _attach() { # <session> [dir]
     fi
 }
 
-# `dev`: this folder's session if it is running, else main.
+# `dev`: in a project, its session, started in its folder if need be;
+# elsewhere this folder's session if it is running; else main.
 _connect_here() {
-    local name session
+    local name session project dir
     is_server || require_reachable
+    if project=$(_current_project); then
+        session=$(session_name "$project")
+        if _session_exists "$session"; then
+            debug "'$session' exists on $DEV_HOST, the project $PWD is in: attaching"
+            _attach "$session"
+        fi
+        dir="$DEV_PROJECTS_DIR/$project"
+        if _dir_on_host "$dir"; then
+            # The name was cleaned (my.proj → my_proj), but the path still
+            # crosses ssh as one bare word: only plain characters make it.
+            if [[ "$project" =~ ^[A-Za-z0-9._-]+$ ]]; then
+                debug "starting '$session' in $dir"
+                _attach "$session" "$dir"
+            fi
+            debug "'$project' has characters a path cannot cross ssh with: starting '$session' in home"
+            _attach "$session"
+        fi
+        debug "$dir is not on $DEV_HOST: attaching nothing"
+        local tilde='~'
+        _boxed "⚠  NO SUCH FOLDER ON ${DEV_HOST}" \
+               "" \
+               "${dir/#"$HOME"/$tilde} does not exist on $DEV_HOST." \
+               "" \
+               "Clone the listed repos there:  dev run dev repos sync" \
+               "Or attach to the default:      dev $DEV_SESSION"
+        exit 1
+    fi
     if name=$(_here_name); then
         session=$(session_name "$name")
         if _session_exists "$session"; then

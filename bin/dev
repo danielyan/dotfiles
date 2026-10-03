@@ -63,6 +63,17 @@ remote_bash() {
     printf '%s\n' "$1" | ssh -o BatchMode=yes "$DEV_HOST" 'bash -ls'
 }
 
+# Did <bash command line> succeed on the Mini? Told by what it prints, never by
+# ssh's exit status: Tailscale SSH on the Mini reports 0 for every remote
+# command (`ssh mini 'exit 3'` exits 0; found 2026-10-02), so a check that
+# trusted it always passed. The marker must be a line of its own, so an echo
+# of the command itself cannot count.
+remote_ok() {
+    local out
+    out=$(remote_bash "{ $1; } >/dev/null 2>&1 && echo __dev_ok")
+    printf '%s\n' "$out" | grep -qx __dev_ok
+}
+
 # Session names keep to letters, digits, _ and -, everything else becoming _.
 # tmux reads "." and ":" in a target as window and pane separators, so
 # "my.proj" could not reliably be found again; and the name crosses ssh (for
@@ -97,7 +108,7 @@ _trace() {
     return "$rc"
 }
 
-export -f ok no maybe section die have is_server reachable require_reachable remote_bash session_name debug
+export -f ok no maybe section die have is_server reachable require_reachable remote_bash remote_ok session_name debug
 
 # --- dispatch -------------------------------------------------------------
 COMMANDS="connect doctor preflight land pair ls run shell status repos"
@@ -106,8 +117,9 @@ usage() {
     cat <<USAGE
 ${C_BOLD}dev${C_OFF} — control the always-on Mac Mini
 
-  ${C_BOLD}dev${C_OFF}                     the session named after this folder (in ~/projects/<p>:
-                          <p>) if it is running, otherwise '$DEV_SESSION'
+  ${C_BOLD}dev${C_OFF}                     in ~/projects/<p>: the <p> session, started in its folder
+                          if need be. Elsewhere this folder's session if it is
+                          running, otherwise '$DEV_SESSION'
   ${C_BOLD}dev${C_OFF} <name>              attach to <name>, typos and partial names too (magpei, mag);
                           offers to start a missing one. main just starts
   ${C_BOLD}dev connect${C_OFF}             pick a running session: type to filter, ↑↓, enter
@@ -183,7 +195,7 @@ _session_exists() {
     if is_server; then
         tmux has-session -t "$target" 2>/dev/null
     else
-        ssh -o ConnectTimeout=5 -o BatchMode=yes "$DEV_HOST" tmux has-session -t "$target" 2>/dev/null
+        remote_ok "tmux has-session -t $(printf '%q' "$target")"
     fi
 }
 
