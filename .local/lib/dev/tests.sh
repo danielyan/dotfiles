@@ -110,14 +110,27 @@ check  "a cleaned name still starts in its folder" \
        "tmux new -A -s my_proj -c $DEV_PROJECTS_DIR/my.proj" "$out"
 mkdir -p "$DEV_PROJECTS_DIR/gone/sub"
 out=$(cd "$DEV_PROJECTS_DIR/gone/sub" && rmdir "$DEV_PROJECTS_DIR/gone/sub" "$DEV_PROJECTS_DIR/gone" && C); rc=$?
-check  "a project folder missing on the Mini is boxed" "║  ⚠  NO SUCH FOLDER ON mini" "$out"
-check  "naming the folder"                   "$DEV_PROJECTS_DIR/gone does not exist on mini." "$out"
-check  "and closing the box"                 "╚═" "$out"
-out=$(cd "$DEV_PROJECTS_DIR/my.proj" && rmdir "$DEV_PROJECTS_DIR/my.proj" && DEV_LIB="$HOME/.local/lib/dev" HOME="$stub_dir" C)
-mkdir -p "$DEV_PROJECTS_DIR/my.proj"
-check  "with home shortened to ~"            "║  ~/projects/my.proj does not exist" "$out"
-refute "and attaches nothing"                "MOSH_ARGS" "$out"
-check_rc "exiting 1"                         1 "$rc"
+check  "a project folder missing on the Mini still starts its session, in home" \
+       "tmux new -A -s gone -c $HOME $HOME/.local/lib/dev/_no-folder.sh $DEV_PROJECTS_DIR/gone" "$out"
+check_rc "and attaches"                      0 "$rc"
+refute "with no box here: tmux would cover it" "NO SUCH FOLDER" "$out"
+running main gone
+mkdir -p "$DEV_PROJECTS_DIR/gone"
+out=$(cd "$DEV_PROJECTS_DIR/gone" && rmdir "$DEV_PROJECTS_DIR/gone" && C)
+check  "a running one is just attached"      "tmux new -A -s gone" "$out"
+refute "with no notice"                      "_no-folder" "$out"
+
+echo "connect: the missing-folder notice, on the Mini"
+printf '#!/usr/bin/env bash\necho "SHELL_STARTED: $*"\n' > "$cs/shell"; chmod +x "$cs/shell"
+out=$(HOME=/Users/someone SHELL="$cs/shell" "$HOME/.local/lib/dev/_no-folder.sh" /Users/someone/projects/gone)
+check  "it boxes the warning"                "║  ⚠  NO SUCH FOLDER ON " "$out"
+check  "naming the folder, home as ~"        "║  ~/projects/gone does not exist here." "$out"
+check  "and where the session is instead"    "This session started in ~ instead." "$out"
+check  "closing the box"                     "╚═" "$out"
+check  "then becomes a login shell"          "SHELL_STARTED: -l" "$out"
+widths=$(printf '%s\n' "$out" | grep '[║╔╚]' | while IFS= read -r l; do
+    printf '%s' "$l" | LC_ALL=en_US.UTF-8 wc -m; done | sort -u | wc -l | tr -d ' ')
+check  "every line of the box is as wide"    "1" "$widths"
 running main scratch
 check  "outside projects, the folder's own name" "tmux new -A -s scratch" "$(cd "$cs/scratch" && C)"
 running main projects

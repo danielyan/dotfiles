@@ -6,7 +6,7 @@
 #
 #   dev                    in ~/projects/<p>/..., the <p> session, started in
 #                          ~/projects/<p> if need be; if the Mini has no such
-#                          folder, dev says so in a box and attaches nothing.
+#                          folder, started in home, saying so in a box there.
 #                          Elsewhere, the session named after the folder if one
 #                          is running. Otherwise main, started if need be
 #   dev <name>             the <name> session. Typos and partial names find the
@@ -63,17 +63,6 @@ _start_dir() { # <name as given> <session>
     [ "$1" = "$2" ] && _dir_on_host "$DEV_PROJECTS_DIR/$1" && printf '%s' "$DEV_PROJECTS_DIR/$1"
 }
 
-# <line>... in a double-line box on stderr, sized to the longest line.
-_boxed() {
-    local LC_ALL=en_US.UTF-8 line width=0 bar
-    for line; do [ "${#line}" -gt "$width" ] && width=${#line}; done
-    printf -v bar '%*s' $((width + 4)) ''
-    bar=${bar// /═}
-    printf '%s╔%s╗\n' "$C_WARN" "$bar" >&2
-    for line; do printf '║  %s%*s  ║\n' "$line" $((width - ${#line})) '' >&2; done
-    printf '╚%s╝%s\n' "$bar" "$C_OFF" >&2
-}
-
 # The terminal to ask on. DEV_TTY points it at a file of keystrokes in tests.
 _tty() { printf '%s' "${DEV_TTY:-/dev/tty}"; }
 _interactive() { [ -n "${DEV_TTY:-}" ] || { [ -t 0 ] && [ -t 2 ]; }; }
@@ -88,11 +77,14 @@ _sessions() {
     fi
 }
 
-# Attach to <session>, starting it (in [dir]) if it is not running: `new -A`
-# attaches when the session exists, and -c only applies when it creates.
-_attach() { # <session> [dir]
+# Attach to <session>, starting it (in [dir], its first window running
+# [command...] rather than a plain shell) if it is not running: `new -A`
+# attaches when the session exists, and -c and the command only apply when it
+# creates. Like the name, every word crosses ssh bare: keep them plain.
+_attach() { # <session> [dir] [command...]
     local tmux_cmd=(tmux new -A -s "$1")
     [ -n "${2:-}" ] && tmux_cmd+=(-c "$2")
+    [ $# -gt 2 ] && tmux_cmd+=("${@:3}")
 
     if is_server; then
         # Already on the Mini: attaching over ssh to ourselves would be absurd.
@@ -128,25 +120,21 @@ _connect_here() {
             _attach "$session"
         fi
         dir="$DEV_PROJECTS_DIR/$project"
-        if _dir_on_host "$dir"; then
-            # The name was cleaned (my.proj → my_proj), but the path still
-            # crosses ssh as one bare word: only plain characters make it.
-            if [[ "$project" =~ ^[A-Za-z0-9._-]+$ ]]; then
-                debug "starting '$session' in $dir"
-                _attach "$session" "$dir"
-            fi
+        # The name was cleaned (my.proj → my_proj), but the path still
+        # crosses ssh as one bare word: only plain characters make it.
+        if ! [[ "$project" =~ ^[A-Za-z0-9._-]+$ ]]; then
             debug "'$project' has characters a path cannot cross ssh with: starting '$session' in home"
             _attach "$session"
         fi
-        debug "$dir is not on $DEV_HOST: attaching nothing"
-        local tilde='~'
-        _boxed "⚠  NO SUCH FOLDER ON ${DEV_HOST}" \
-               "" \
-               "${dir/#"$HOME"/$tilde} does not exist on $DEV_HOST." \
-               "" \
-               "Clone the listed repos there:  dev run dev repos sync" \
-               "Or attach to the default:      dev $DEV_SESSION"
-        exit 1
+        if _dir_on_host "$dir"; then
+            debug "starting '$session' in $dir"
+            _attach "$session" "$dir"
+        fi
+        # Started anyway, in home, and the session itself says why: the box
+        # is drawn on the Mini, where it stays on screen, not here, where
+        # tmux would cover it at once.
+        debug "$dir is not on $DEV_HOST: starting '$session' in home, with a notice"
+        _attach "$session" "$HOME" "$DEV_LIB/_no-folder.sh" "$dir"
     fi
     if name=$(_here_name); then
         session=$(session_name "$name")
