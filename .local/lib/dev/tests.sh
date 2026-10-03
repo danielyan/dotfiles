@@ -81,13 +81,14 @@ if [ "\${*: -1}" = "bash -ls" ]; then
 fi
 echo "SSH_ARGS: \$*"
 STUB
-printf '#!/usr/bin/env bash\necho "MOSH_ARGS: $*"\n' > "$cs/mosh"
+printf '#!/usr/bin/env bash\necho "MOSH_ARGS: $*"\necho "MOSH_TITLE_NOPREFIX=${MOSH_TITLE_NOPREFIX:-}"\n' > "$cs/mosh"
 chmod +x "$cs/ssh" "$cs/mosh"
 running() { : > "$cs/running"; local s; for s; do printf '%s\n' "$s" >> "$cs/running"; done; }
 C() { PATH="$cs:$PATH" "$DEV" "$@" 2>&1; }
 keys() { printf "$1" > "$cs/keys"; }      # what the "terminal" types next
 mkdir -p "$DEV_PROJECTS_DIR/fresco/Sources" "$DEV_PROJECTS_DIR/my.proj" "$cs/scratch" "$cs/home"
 check "connect prefers mosh" "MOSH_ARGS" "$(running main; C)"
+check "without mosh's [mosh] title prefix" "MOSH_TITLE_NOPREFIX=1" "$(running main; MOSH_TITLE_NOPREFIX= C)"
 check "DEV_HOST is respected" "elsewhere" "$(running main; PATH="$cs:$PATH" DEV_HOST=elsewhere "$DEV" 2>&1)"
 
 echo "connect: dev"

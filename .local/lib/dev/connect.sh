@@ -79,6 +79,9 @@ _attach() { # <session> [dir]
     require_reachable
     if have mosh; then
         # mosh survives lid-close, IP changes and long suspends; ssh does not.
+        # It also puts "[mosh] " in front of the tab title tmux sets, unless
+        # told not to.
+        export MOSH_TITLE_NOPREFIX=1
         debug "\$ mosh $DEV_HOST -- $(printf '%q ' "${tmux_cmd[@]}")"
         exec mosh "$DEV_HOST" -- "${tmux_cmd[@]}"
     else
