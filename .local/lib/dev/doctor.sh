@@ -25,6 +25,25 @@ if folders:
     print("versioning", (f.get("versioning") or {}).get("type") or "none")
 '
 }
+# Run on the Mini: can a session there open the folders macOS guards? Prints
+# `ok|blocked|denied <folder>` per folder. A process started over ssh is
+# charged to whatever ssh server started it. Under Tailscale SSH that was
+# tailscaled, and opening iCloud Drive or ~/Music raised a privacy dialog on
+# the Mini's screen and blocked until someone clicked it: Claude Code hung. So
+# each listing gets a few seconds, and one still running then is blocked.
+# DEV_PROBE_LS stands in for ls in tests.
+_PROTECTED_PROBE='
+for d in "$HOME/Library/Mobile Documents" "$HOME/Music" "$HOME/Documents"; do
+    [ -d "$d" ] || continue
+    ${DEV_PROBE_LS:-ls} "$d" >/dev/null 2>&1 &
+    p=$!
+    for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 $p 2>/dev/null || break; sleep 0.5; done
+    if kill -0 $p 2>/dev/null; then
+        { kill -9 $p; wait $p; } 2>/dev/null; echo "blocked $d"
+    elif wait $p; then echo "ok $d"
+    else echo "denied $d"; fi
+done'
+
 _cf_field() { printf '%s\n' "$1" | awk -v k="$2" '$1 == k { print $2 }'; }
 
 # One check, one line: `[area] message ✓`, the mark last so the messages line
@@ -146,7 +165,7 @@ dev_doctor() {
             stale) _w "Tailscale connected, but tailscaled is older than its CLI" \
                       "sudo brew services restart tailscale" ;;
             *)     if [ "$ts_kind" = brew ]; then
-                       _f "Tailscale not connected" "sudo brew services start tailscale, then sudo tailscale up --ssh"
+                       _f "Tailscale not connected" "sudo brew services start tailscale, then sudo tailscale up --ssh=false"
                    else
                        _f "Tailscale not connected" "open -a Tailscale and sign in"
                    fi ;;
@@ -211,6 +230,31 @@ dev_doctor() {
                     && _p "mosh available on both ends" \
                     || _w "mosh-server missing on mini" "dev run brew install mosh"
             fi
+
+            # macOS's sshd hands back a command's exit code; Tailscale SSH
+            # always says 0, and its sessions hang on privacy dialogs.
+            _doctor_spin "$area" "asking which ssh server answers" \
+                ssh -o BatchMode=yes "$DEV_HOST" 'exit 3' </dev/null
+            if [ $? -eq 3 ]; then
+                _p "the Mini's own sshd answers (Remote Login)"
+            else
+                _f "Tailscale SSH answers on the Mini, not its own sshd" \
+                   "on the Mini: tailscale set --ssh=false, and turn on Remote Login"
+            fi
+
+            local line verdict folder shown tilde='~'
+            while IFS= read -r line; do
+                verdict=${line%% *}; folder=${line#* }
+                shown=${folder/#"$HOME"/$tilde}
+                case "$verdict" in
+                    ok)      _p "$shown opens over ssh" ;;
+                    blocked) _f "$shown hangs over ssh: a privacy dialog is waiting on the Mini's screen" \
+                                "Sharing → Remote Login ⓘ → Allow full disk access for remote users; then restart tmux" ;;
+                    denied)  _f "$shown is refused over ssh" \
+                                "Sharing → Remote Login ⓘ → Allow full disk access for remote users; then restart tmux" ;;
+                esac
+            done < <(_doctor_spin "$area" "opening protected folders on $DEV_HOST" \
+                         remote_bash "$_PROTECTED_PROBE")
         else
             _f "cannot ssh to '$DEV_HOST'" "check Tailscale on both ends; is the Mini awake?"
         fi

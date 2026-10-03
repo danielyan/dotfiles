@@ -42,9 +42,23 @@ Both machines join a private mesh network. The Mini is reachable as `mini` from
 anywhere with internet, with no port forwarding, no dynamic DNS, and no exposure
 to the public internet.
 
-**Tailscale SSH** is enabled, which means SSH authentication happens through your
-tailnet identity rather than through key files. This is why no private key is
-ever synced between machines — there's nothing to sync.
+Tailscale is only the network. The SSH server is the Mini's own (**Remote
+Login**), with **"Allow full disk access for remote users"** turned on, and
+**Tailscale SSH is off** (`tailscale set --ssh=false`). Under Tailscale SSH,
+every process started over ssh, Claude Code included, was charged to
+`tailscaled`. The first time one touched iCloud Drive or `~/Music`, macOS put a
+privacy dialog on the Mini's screen and blocked the access until someone
+clicked it, which on a headless Mini meant forever. Tailscale SSH also reports
+exit code 0 for every remote command.
+
+Each client logs in with its **own** key: generate one on the machine, put its
+passphrase in the Keychain (`ssh-add --apple-use-keychain ~/.ssh/id_ed25519`),
+and append its public half to the Mini's `~/.ssh/authorized_keys`. No private
+key is ever copied between machines. `dev doctor` checks that the Mini's own
+sshd answers and that the guarded folders open over ssh without a dialog.
+
+After changing who serves ssh, restart the Mini's tmux server
+(`dev run tmux kill-server`): processes keep the server that started them.
 
 `~/.ssh/config.mini` adds keepalives so a tmux attach doesn't hang when the
 network hiccups, and connection multiplexing so subsequent commands are instant.

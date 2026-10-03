@@ -428,6 +428,25 @@ check "every check is tagged with its area" "[dotfiles] " "$out"
 check "a blank line separates areas" $'\n\n[dotfiles] ' "$out"
 check "but none comes before the first" "[packages] " "${out:0:11}"
 
+echo "doctor: protected folders over ssh"
+# The probe, run here with a stand-in ls: one folder opens, one hangs the way a
+# pending privacy dialog does, one is refused.
+pf=$(mktemp -d)
+mkdir -p "$pf/Library/Mobile Documents" "$pf/Music" "$pf/Documents"
+cat > "$pf/fake-ls" <<'STUB'
+#!/usr/bin/env bash
+case "$1" in *Music) exec sleep 30 ;; *Documents) [[ "$1" == *Mobile* ]] && exit 0; exit 1 ;; esac
+STUB
+chmod +x "$pf/fake-ls"
+probe=$(HOME="$pf" DEV_PROBE_LS="$pf/fake-ls" bash -c ". \"$HOME/.local/lib/dev/doctor.sh\"; eval \"\$_PROTECTED_PROBE\"" 2>"$pf/stderr")
+check  "and says nothing else"              "" "$(cat "$pf/stderr")"
+refute "not even bash's job notice"          "Killed" "$(cat "$pf/stderr")"
+check  "a folder that opens is ok"           "ok $pf/Library/Mobile Documents" "$probe"
+check  "one that hangs is blocked"           "blocked $pf/Music" "$probe"
+check  "one that is refused is denied"       "denied $pf/Documents" "$probe"
+refute "and the hung listing is not left behind" "sleep 30" "$(ps -ax -o command | grep -x 'sleep 30')"
+rm -rf "$pf"
+
 echo "doctor: a spinner while a slow check runs"
 # _doctor_spin <tty> <command...>: stdout is the command's, fd 4 the terminal's.
 spin() {

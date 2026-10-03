@@ -213,7 +213,12 @@ start_tailscale_service() {
         return
     fi
     tailscale status >/dev/null 2>&1 \
-        || todo "Sign the Mini into Tailscale. Run: sudo tailscale up --ssh"
+        || todo "Sign the Mini into Tailscale. Run: sudo tailscale up --ssh=false"
+    # The Mini's own sshd serves ssh, not Tailscale SSH: see README, Layer 1.
+    # Tailscale SSH only listens on the tailnet address, so a listener on
+    # localhost:22 is Remote Login.
+    nc -z -G 2 127.0.0.1 22 2>/dev/null \
+        || todo "On the Mini: System Settings → General → Sharing → Remote Login on, ⓘ → Allow full disk access for remote users; add each client's public key to ~/.ssh/authorized_keys"
 }
 
 echo_ok "Bootstrap starting..."
