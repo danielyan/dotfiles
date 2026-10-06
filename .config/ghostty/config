@@ -17,3 +17,9 @@ term = xterm-256color
 # Jump straight to the persistent tmux session on the Mini.
 # See vault: projects/project-machine-continuity.md
 keybind = cmd+shift+m=text:dev\n
+
+# Shift+Enter as ESC+CR (Alt+Enter), which Claude Code reads as a newline.
+# Over `dev` (mosh → tmux) the real Shift+Enter never arrives: mosh keeps the
+# Mini's request for extended key reporting to itself, so Ghostty sends a bare
+# CR, the same as Enter. ESC+CR is plain bytes and gets through mosh and tmux.
+keybind = shift+enter=text:\x1b\r
