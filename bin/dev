@@ -111,19 +111,20 @@ _trace() {
 export -f ok no maybe section die have is_server reachable require_reachable remote_bash remote_ok session_name debug
 
 # --- dispatch -------------------------------------------------------------
-COMMANDS="connect doctor preflight land pair ls run shell status repos"
+COMMANDS="connect doctor preflight land pair ls kill run shell status repos"
 
 usage() {
     cat <<USAGE
 ${C_BOLD}dev${C_OFF} — control the always-on Mac Mini
 
-  ${C_BOLD}dev${C_OFF}                     in ~/projects/<p>: the <p> session, started in its folder
-                          if need be. Elsewhere this folder's session if it is
-                          running, otherwise '$DEV_SESSION'
+  ${C_BOLD}dev${C_OFF}                     in ~/projects/<p>: the <p> session, in its folder; if the
+                          Mini lacks the folder, offers to copy it there first.
+                          Elsewhere '$DEV_SESSION'
   ${C_BOLD}dev${C_OFF} <name>              attach to <name>, typos and partial names too (magpei, mag);
                           offers to start a missing one. main just starts
   ${C_BOLD}dev connect${C_OFF}             pick a running session: type to filter, ↑↓, enter
   ${C_BOLD}dev ls${C_OFF}                  list sessions without attaching
+  ${C_BOLD}dev kill${C_OFF} [name]         kill <name>, or pick a running session to kill
   ${C_BOLD}dev run${C_OFF} <command>       run one command remotely, no session
   ${C_BOLD}dev shell${C_OFF}               a plain login shell, no tmux
   ${C_BOLD}dev status${C_OFF}              quick health summary
@@ -166,7 +167,7 @@ if [ "$DEV_VERBOSE" = 1 ]; then
     unset _sleep
 fi
 
-# No arguments: this folder's session, else main (connect.sh's _connect_here).
+# No arguments: this project's session, else main (connect.sh's _connect_here).
 cmd="${1:-connect}"
 fn="dev_$cmd"
 [ $# -eq 0 ] && fn=_connect_here

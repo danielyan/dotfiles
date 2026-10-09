@@ -200,10 +200,11 @@ works over ssh, in any shell, and on a machine that hasn't been configured yet.
 
 | Command | Does |
 |---|---|
-| `dev` | In `~/projects/<p>` or below, the `<p>` session, started in `~/projects/<p>` if need be; if the Mini has no such folder, it starts in home and says so in a box inside the session. Elsewhere, the session named after this folder if it is running; otherwise `main`, started if need be |
-| `dev <name>` | Attach to the `<name>` session. Typos and partial names find the running session meant (`magpei`, `mag` → `magpie`); a name several could mean opens the picker with just those. A missing one is not started silently: `dev` says so and offers to, matching project folders the same way (`fresko` → `fresco`, started in its folder). `main` always just starts |
+| `dev` | In `~/projects/<p>` or below, the `<p>` session, started in `~/projects/<p>` if need be. If the Mini has no such folder, `dev` says so before connecting, with the number of files and size a copy would send, and asks: `c` copies the folder there (skipping what `~/.local/lib/dev/.devignore` lists) and connects in it, `h` connects in home without copying, `q` cancels. A session already running in home gets a new window in the copied folder. Anywhere else, `main`, started if need be |
+| `dev <name>` | Attach to the `<name>` session (from inside `~/projects/<name>`, the same as `dev`). Typos and partial names find the running session meant (`magpei`, `mag` → `magpie`); a name several could mean opens the picker with just those. A missing one is not started silently: `dev` says so and offers to, matching project folders the same way (`fresko` → `fresco`, started in its folder). `main` always just starts |
 | `dev connect` | Pick a running session from a list: type to filter (letters in order match too: `mgp` → `magpie`), ↑↓ to move, enter to attach, esc to cancel |
 | `dev ls` | List sessions without attaching |
+| `dev kill [name]` | End a session and everything running in it. With a name, that session; a typo or partial name is only killed after you confirm the session it means. Alone, the same picker as `dev connect`, enter kills |
 | `dev run <cmd>` | Run one command remotely and come straight back |
 | `dev shell` | A plain login shell, no tmux |
 | `dev status` | Fast health summary; non-zero exit if anything is wrong |
@@ -224,8 +225,9 @@ Two behaviours worth knowing:
   local tmux session rather than ssh-ing to itself, and `dev run` just runs the
   command. `doctor` checks the Mini for live sessions and iCloud eviction, and
   the Air for whether it can reach the Mini at all.
-- **Only two things start a session**: `main` (from `dev` or `dev main`), and a
-  yes when `dev <name>` offers to start a missing one. Everything else attaches.
+- **Only three things start a session**: `main` (from `dev` or `dev main`), `dev`
+  in a project folder, and a yes when `dev <name>` offers to start a missing
+  one. Everything else attaches.
 - **Anything that is not a command is a session name**, but a near-miss of a
   command is treated as a typo: `dev doctr` asks whether you meant `dev doctor`
   unless a session called `doctr` already exists. A session whose name is a

@@ -5,11 +5,12 @@
 # left off, including a Claude Code conversation mid-task.
 #
 #   dev                    in ~/projects/<p>/..., the <p> session, started in
-#                          ~/projects/<p> if need be; if the Mini has no such
-#                          folder, started in home, saying so in a box there.
-#                          Elsewhere, the session named after the folder if one
-#                          is running. Otherwise main, started if need be
-#   dev <name>             the <name> session. Typos and partial names find the
+#                          ~/projects/<p> if need be. If the Mini has no such
+#                          folder, dev says so before connecting and offers to
+#                          copy it there from here (see _offer_copy). Anywhere
+#                          else, main, started if need be
+#   dev <name>             the <name> session; from inside ~/projects/<name>,
+#                          the same as dev. Typos and partial names find the
 #                          running session meant (magpei, mag → magpie); a name
 #                          several could mean opens the picker with just those.
 #                          A missing session is not started silently: dev says
@@ -34,16 +35,6 @@ _current_project() {
     esac
     rel=${PWD#"$DEV_PROJECTS_DIR"/}
     printf '%s' "${rel%%/*}"
-}
-
-# The name `dev` looks for here: the project, else this folder's own name. Home
-# and the projects folder itself name nothing: they mean main.
-_here_name() {
-    _current_project && return 0
-    case "$PWD" in
-        "$HOME"|"$DEV_PROJECTS_DIR"|/) return 1 ;;
-    esac
-    printf '%s' "${PWD##*/}"
 }
 
 # Is <dir> a folder on the Mini? Asked of the Mini itself: a project can be
@@ -108,45 +99,120 @@ _attach() { # <session> [dir] [command...]
     fi
 }
 
-# `dev`: in a project, its session, started in its folder if need be;
-# elsewhere this folder's session if it is running; else main.
+# `dev`: in a project, its session, in its folder; anywhere else, main.
 _connect_here() {
-    local name session project dir
+    local project session dir
     is_server || require_reachable
-    if project=$(_current_project); then
-        session=$(session_name "$project")
-        if _session_exists "$session"; then
-            debug "'$session' exists on $DEV_HOST, the project $PWD is in: attaching"
-            _attach "$session"
-        fi
-        dir="$DEV_PROJECTS_DIR/$project"
-        # The name was cleaned (my.proj → my_proj), but the path still
-        # crosses ssh as one bare word: only plain characters make it.
-        if ! [[ "$project" =~ ^[A-Za-z0-9._-]+$ ]]; then
-            debug "'$project' has characters a path cannot cross ssh with: starting '$session' in home"
-            _attach "$session"
-        fi
-        if _dir_on_host "$dir"; then
-            debug "starting '$session' in $dir"
-            _attach "$session" "$dir"
-        fi
-        # Started anyway, in home, and the session itself says why: the box
-        # is drawn on the Mini, where it stays on screen, not here, where
-        # tmux would cover it at once.
-        debug "$dir is not on $DEV_HOST: starting '$session' in home, with a notice"
-        _attach "$session" "$HOME" "$DEV_LIB/_no-folder.sh" "$dir"
+    if ! project=$(_current_project); then
+        debug "$PWD is not in a project: '$DEV_SESSION', the default"
+        _attach "$DEV_SESSION"
     fi
-    if name=$(_here_name); then
-        session=$(session_name "$name")
-        if _session_exists "$session"; then
-            debug "'$session' exists on $DEV_HOST, named after $PWD: attaching"
-            _attach "$session"
-        fi
-        debug "no '$session' session on $DEV_HOST for $PWD: '$DEV_SESSION' instead"
-    else
-        debug "$PWD names no session: '$DEV_SESSION', the default"
+    session=$(session_name "$project")
+    dir="$DEV_PROJECTS_DIR/$project"
+    # The name was cleaned (my.proj → my_proj), but the path still crosses
+    # ssh as one bare word: only plain characters make it.
+    if ! [[ "$project" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        debug "'$project' has characters a path cannot cross ssh with: '$session' in home"
+        _attach "$session"
     fi
-    _attach "$DEV_SESSION"
+    if _dir_on_host "$dir"; then
+        # -c only applies if the session is new: a running one is attached.
+        debug "$dir is on $DEV_HOST: '$session', started there if need be"
+        _attach "$session" "$dir"
+    fi
+    debug "$dir is not on $DEV_HOST"
+    _offer_copy "$session" "$dir"
+}
+
+# What a copy of <dir> to the Mini would send, as "<files> <bytes>": an rsync
+# dry run with the same ignore list, so the numbers are the copy's own.
+_copy_stats() { # <dir>
+    local empty stats
+    empty=$(mktemp -d) || return 1
+    stats=$(rsync -a --dry-run --stats --exclude-from="$DEV_LIB/.devignore" "$1/" "$empty/" 2>/dev/null)
+    rmdir "$empty"
+    # "files transferred" and "Total file size" are in openrsync and GNU
+    # rsync alike; GNU puts commas in the numbers.
+    printf '%s\n' "$stats" | awk -F: '
+        /files transferred/ { gsub(/[^0-9]/, "", $2); files = $2 }
+        /^Total file size/  { gsub(/[^0-9]/, "", $2); bytes = $2 }
+        END { if (files == "" || bytes == "") exit 1; print files, bytes }'
+}
+
+# 1536 → 1.5 KB.
+_human_size() { # <bytes>
+    awk -v b="$1" 'BEGIN {
+        split("B KB MB GB TB", u); i = 1
+        while (b >= 1024 && i < 5) { b /= 1024; i++ }
+        printf (i == 1 ? "%d %s" : "%.1f %s"), b, u[i] }'
+}
+
+# <lines...> in a box, on stderr: a warning that must not scroll by unread.
+_box() {
+    local line width=0 bar restore
+    # Widths count characters, not bytes: the ⚠ and the box are multibyte.
+    restore=${LC_ALL-}
+    export LC_ALL=en_US.UTF-8
+    for line in "$@"; do [ "${#line}" -gt "$width" ] && width=${#line}; done
+    printf -v bar '%*s' $((width + 4)) ''
+    bar=${bar// /═}
+    {
+        printf '%s╔%s╗\n' "$C_WARN" "$bar"
+        for line in "$@"; do printf '║  %s%*s  ║\n' "$line" $((width - ${#line})) ''; done
+        printf '╚%s╝%s\n' "$bar" "$C_OFF"
+    } >&2
+    if [ -n "$restore" ]; then LC_ALL=$restore; else unset LC_ALL; fi
+}
+
+# Copy <dir> to the same path on the Mini, minus what .devignore lists.
+_copy_to_host() { # <dir>
+    remote_ok "mkdir -p $(printf '%q' "${1%/*}")" || return 1
+    debug "\$ rsync -a --exclude-from=$DEV_LIB/.devignore $1/ $DEV_HOST:$1/"
+    rsync -a --exclude-from="$DEV_LIB/.devignore" -e "ssh -o BatchMode=yes" \
+        "$1/" "$DEV_HOST:$1/" || return 1
+    _dir_on_host "$1"
+}
+
+# The Mini has no copy of the project <dir> this Mac is in. Say so here,
+# before tmux covers the screen, and offer to copy it there first: copy and
+# connect in the folder, connect in home without it, or cancel. With no
+# terminal to ask on, nothing is copied: connect in home.
+_offer_copy() { # <session> <dir>
+    local session=$1 dir=$2 tilde='~' stats files bytes what answer
+    if stats=$(_copy_stats "$dir"); then
+        read -r files bytes <<< "$stats"
+        what="$files file$([ "$files" = 1 ] || echo s), $(_human_size "$bytes")"
+    fi
+    _box "⚠  ${dir/#"$HOME"/$tilde} IS NOT ON $DEV_HOST" \
+         "" \
+         "Copy it from here: ${what:-size unknown}" \
+         "(.git included; .devignore entries skipped)"
+
+    if ! _interactive; then
+        printf '  %s→ connecting in home; run dev in a terminal to copy it%s\n' "$C_DIM" "$C_OFF" >&2
+        _attach "$session" "$HOME"
+    fi
+    printf '[c] copy and connect · [h] connect in home · [q] cancel: ' >&2
+    IFS= read -r answer < "$(_tty)" || answer=""
+    case "$answer" in
+        c|C)
+            printf 'copying to %s:%s …\n' "$DEV_HOST" "${dir/#"$HOME"/$tilde}" >&2
+            _copy_to_host "$dir" || die "copying $dir to $DEV_HOST failed; nothing was connected"
+            printf "%scopied%s\n" "$C_OK" "$C_OFF" >&2
+            # A session already running started in home: its windows stay
+            # there, and a new one opens in the folder.
+            if _session_exists "$session"; then
+                debug "'$session' is running: opening a window in $dir"
+                remote_ok "tmux new-window -t $(printf '%q' "=$session:") -c $(printf '%q' "$dir")" \
+                    || maybe "could not open a window in $dir; attaching as it is"
+            fi
+            _attach "$session" "$dir" ;;
+        h|H)
+            debug "connecting to '$session' in home, without a copy"
+            _attach "$session" "$HOME" ;;
+    esac
+    echo "cancelled" >&2
+    exit 1
 }
 
 # The project folders, by name: what a session could be started for.
@@ -165,6 +231,11 @@ _connect_named() {
     session=$(session_name "$1")
     [ "$session" != "$1" ] \
         && debug "renamed '$1' to '$session': names keep to letters, digits, _ and -"
+    local here
+    if here=$(_current_project) && [ "$(session_name "$here")" = "$session" ]; then
+        debug "'$1' is the project $PWD is in: as dev"
+        _connect_here
+    fi
     if [ "$(printf '%s' "$session" | tr '[:upper:]' '[:lower:]')" = "$DEV_SESSION" ]; then
         session=$DEV_SESSION
         debug "'$session' is the default session: attaching, starting it if need be"
@@ -253,6 +324,7 @@ _filter_sessions() { # <filter> <name|attached>...
 # An interactive list of <name|attached> entries, drawn on stderr and read from
 # the terminal: type to filter, ↑/↓ (or ctrl-p/ctrl-n) to move, enter to pick,
 # esc or ctrl-c to cancel. Prints the chosen name; returns 1 if cancelled.
+# PICK_VERB names what enter does in the hint line (attach, kill).
 _pick() {
     local entries=("$@") shown=() filter="" sel=0 drawn=0 key rest chosen=""
     local rows=${DEV_PICK_ROWS:-10} tty saved
@@ -335,7 +407,7 @@ _pick_draw() {
     [ "$last" -lt "${#shown[@]}" ] && {
         printf -v line '  %s… %d more%s\n' "$C_DIM" $(( ${#shown[@]} - last )) "$C_OFF"
         out+=$line; drawn=$((drawn + 1)); }
-    printf -v line '%s↑↓ move · enter attach · esc cancel%s\n' "$C_DIM" "$C_OFF"
+    printf -v line '%s↑↓ move · enter %s · esc cancel%s\n' "$C_DIM" "${PICK_VERB:-attach}" "$C_OFF"
     out+=$line; drawn=$((drawn + 1))
     printf '%s' "$out" >&2
 }

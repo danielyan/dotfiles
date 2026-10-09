@@ -80,14 +80,35 @@ if [ "\${*: -1}" = "bash -ls" ]; then
         *"has-session -t ="*)
             name=\${stdin##*has-session -t =}; name=\${name%%;*}
             cut -d'|' -f1 "$cs/running" | grep -qx -- "\$name" && echo __dev_ok ;;
-        *"test -d "*) eval "\$stdin" ;;
+        *"kill-session -t ="*)
+            name=\${stdin##*kill-session -t =}; name=\${name%%;*}
+            cut -d'|' -f1 "$cs/running" | grep -qx -- "\$name" || exit 0
+            grep -v "^\$name\(|\|\$\)" "$cs/running" > "$cs/running.new"
+            mv "$cs/running.new" "$cs/running"; echo __dev_ok ;;
+        *"test -d "*)
+            # Folders listed in \$cs/missing are not on the Mini.
+            dir=\${stdin#*test -d }; dir=\${dir%%;*}
+            grep -qx -- "\$dir" "$cs/missing" 2>/dev/null || eval "\$stdin" ;;
+        *"mkdir -p "*) echo __dev_ok ;;
+        *"new-window"*) printf '%s\n' "\$stdin" >> "$cs/log"; echo __dev_ok ;;
     esac
     exit 0
 fi
 echo "SSH_ARGS: \$*"
 STUB
 printf '#!/usr/bin/env bash\necho "MOSH_ARGS: $*"\necho "MOSH_TITLE_NOPREFIX=${MOSH_TITLE_NOPREFIX:-}"\n' > "$cs/mosh"
-chmod +x "$cs/ssh" "$cs/mosh"
+# rsync: dry runs (the stats) are real, on a PATH without this stub, since
+# openrsync starts its local receiver as whatever `rsync` PATH finds; a copy is logged and puts the folder
+# on the "Mini", unless RSYNC_FAIL is set.
+cat > "$cs/rsync" <<STUB
+#!/usr/bin/env bash
+for a in "\$@"; do [ "\$a" = --dry-run ] && PATH=/usr/bin:/bin exec rsync "\$@"; done
+echo "RSYNC_ARGS: \$*"
+[ -n "\${RSYNC_FAIL:-}" ] && exit 1
+dest=\${*: -1}; dest=\${dest#*:}; dest=\${dest%/}
+grep -vx -- "\$dest" "$cs/missing" > "$cs/missing.new"; mv "$cs/missing.new" "$cs/missing"
+STUB
+chmod +x "$cs/ssh" "$cs/mosh" "$cs/rsync"
 running() { : > "$cs/running"; local s; for s; do printf '%s\n' "$s" >> "$cs/running"; done; }
 C() { PATH="$cs:$PATH" "$DEV" "$@" 2>&1; }
 keys() { printf "$1" > "$cs/keys"; }      # what the "terminal" types next
@@ -100,7 +121,7 @@ echo "connect: dev"
 running main fresco
 out=$(cd "$DEV_PROJECTS_DIR/fresco/Sources" && C)
 check  "in a project, its running session" "tmux new -A -s fresco" "$out"
-refute "attaching, so no start folder"      " -c " "$out"
+check  "in its folder, which only a new session takes" "-c $DEV_PROJECTS_DIR/fresco" "$out"
 running main
 out=$(cd "$DEV_PROJECTS_DIR/fresco/Sources" && C)
 check  "a project with no session starts it in the project" \
@@ -108,31 +129,64 @@ check  "a project with no session starts it in the project" \
 out=$(cd "$DEV_PROJECTS_DIR/my.proj" && C)
 check  "a cleaned name still starts in its folder" \
        "tmux new -A -s my_proj -c $DEV_PROJECTS_DIR/my.proj" "$out"
-mkdir -p "$DEV_PROJECTS_DIR/gone/sub"
-out=$(cd "$DEV_PROJECTS_DIR/gone/sub" && rmdir "$DEV_PROJECTS_DIR/gone/sub" "$DEV_PROJECTS_DIR/gone" && C); rc=$?
-check  "a project folder missing on the Mini still starts its session, in home" \
-       "tmux new -A -s gone -c $HOME $HOME/.local/lib/dev/_no-folder.sh $DEV_PROJECTS_DIR/gone" "$out"
-check_rc "and attaches"                      0 "$rc"
-refute "with no box here: tmux would cover it" "NO SUCH FOLDER" "$out"
-running main gone
-mkdir -p "$DEV_PROJECTS_DIR/gone"
-out=$(cd "$DEV_PROJECTS_DIR/gone" && rmdir "$DEV_PROJECTS_DIR/gone" && C)
-check  "a running one is just attached"      "tmux new -A -s gone" "$out"
-refute "with no notice"                      "_no-folder" "$out"
 
-echo "connect: the missing-folder notice, on the Mini"
-printf '#!/usr/bin/env bash\necho "SHELL_STARTED: $*"\n' > "$cs/shell"; chmod +x "$cs/shell"
-out=$(HOME=/Users/someone SHELL="$cs/shell" "$HOME/.local/lib/dev/_no-folder.sh" /Users/someone/projects/gone)
-check  "it boxes the warning"                "║  ⚠  NO SUCH FOLDER ON " "$out"
-check  "naming the folder, home as ~"        "║  ~/projects/gone does not exist here." "$out"
-check  "and where the session is instead"    "This session started in ~ instead." "$out"
-check  "closing the box"                     "╚═" "$out"
-check  "then becomes a login shell"          "SHELL_STARTED: -l" "$out"
+echo "connect: a project the Mini lacks"
+ply="$DEV_PROJECTS_DIR/ply"
+mkdir -p "$ply/sub" "$ply/.git" "$ply/node_modules/pkg"
+printf 'abcd' > "$ply/sub/a"; printf 'x' > "$ply/.git/HEAD"; printf 'secret' > "$ply/.env"
+head -c 9999 /dev/zero > "$ply/node_modules/pkg/big"
+lacks() { printf '%s\n' "$@" > "$cs/missing"; : > "$cs/log"; }
+P() { (cd "$ply/sub" && C "$@"); }
+running main; lacks "$ply"
+keys 'q\n'; out=$(DEV_TTY="$cs/keys" P); rc=$?
+check  "it says so before connecting"        "⚠  $ply IS NOT ON mini" "$out"
+check  "with what a copy would send"          "Copy it from here: 3 files, 11 B" "$out"
+check  "and offers the three choices"         "[c] copy and connect · [h] connect in home · [q] cancel" "$out"
+check  "q cancels"                            "cancelled" "$out"
+check_rc "with exit 1"                        1 "$rc"
+refute "connecting nothing"                   "MOSH_ARGS" "$out"
+refute "copying nothing"                      "RSYNC_ARGS" "$out"
 widths=$(printf '%s\n' "$out" | grep '[║╔╚]' | while IFS= read -r l; do
     printf '%s' "$l" | LC_ALL=en_US.UTF-8 wc -m; done | sort -u | wc -l | tr -d ' ')
 check  "every line of the box is as wide"    "1" "$widths"
+keys '\n'; out=$(DEV_TTY="$cs/keys" P); rc=$?
+check_rc "so does just enter"                1 "$rc"
+keys 'h\n'; out=$(DEV_TTY="$cs/keys" P)
+check  "h connects in home"                   "tmux new -A -s ply -c $HOME" "$out"
+refute "without copying"                      "RSYNC_ARGS" "$out"
+keys 'c\n'; out=$(DEV_TTY="$cs/keys" P)
+check  "c copies the folder to the same path" "RSYNC_ARGS: -a --exclude-from=$HOME/.local/lib/dev/.devignore -e ssh -o BatchMode=yes $ply/ mini:$ply/" "$out"
+check  "then connects in it"                  "tmux new -A -s ply -c $ply" "$out"
+lacks "$ply"
+keys 'c\n'; out=$(RSYNC_FAIL=1 DEV_TTY="$cs/keys" P); rc=$?
+check  "a failed copy says so"                "copying $ply to mini failed" "$out"
+check_rc "and exits 1"                        1 "$rc"
+refute "connecting nothing"                   "MOSH_ARGS" "$out"
+running main ply; lacks "$ply"
+keys 'c\n'; out=$(DEV_TTY="$cs/keys" P)
+check  "a session already running gets a window in the copy" \
+       "tmux new-window -t =ply: -c $ply" "$(cat "$cs/log")"
+check  "and is attached"                      "tmux new -A -s ply" "$out"
+lacks "$ply"
+keys 'c\n'; out=$(DEV_TTY="$cs/keys" P ply)
+check  "dev <project> from inside it offers the same" "RSYNC_ARGS" "$out"
+lacks "$ply"
+out=$(P); rc=$?
+check  "with no terminal it warns"           "IS NOT ON mini" "$out"
+check  "and connects in home"                "tmux new -A -s ply -c $HOME" "$out"
+refute "copying nothing"                     "RSYNC_ARGS" "$out"
+lacks
+check  "a folder the Mini has is not offered" "tmux new -A -s ply -c $ply" "$(P)"
+refute "and nothing is said"                  "IS NOT ON" "$(P)"
+check  "the stats skip what .devignore lists" "3 11" \
+    "$(DEV_LIB="$HOME/.local/lib/dev" bash -c '. "$DEV_LIB/connect.sh"; _copy_stats "$1"' _ "$ply")"
+check  "sizes are readable" "1.5 KB" \
+    "$(bash -c '. "$HOME/.local/lib/dev/connect.sh"; _human_size 1536'), $(bash -c '. "$HOME/.local/lib/dev/connect.sh"; _human_size 7')"
+rm -rf "$ply"
+
+echo "connect: dev outside a project"
 running main scratch
-check  "outside projects, the folder's own name" "tmux new -A -s scratch" "$(cd "$cs/scratch" && C)"
+check  "is main, whatever the folder's name" "tmux new -A -s main" "$(cd "$cs/scratch" && C)"
 running main projects
 check  "the projects folder itself is main" "tmux new -A -s main" "$(cd "$DEV_PROJECTS_DIR" && C)"
 running main home
@@ -261,6 +315,59 @@ check_rc "and exits 1"                   1 "$rc"
 out=$(C connect fresco); rc=$?
 check  "connect takes no name"           "takes no name" "$out"
 check_rc "exits 1"                       1 "$rc"
+
+echo "kill"
+left() { cut -d'|' -f1 "$cs/running" | tr '\n' ' '; }
+running "main|0" "magpie|1" "maps|0"
+out=$(C kill magpie); rc=$?
+check  "a named session is killed"       "killed 'magpie'" "$out"
+check_rc "exits 0"                       0 "$rc"
+check  "and only it"                     "main maps " "$(left)"
+refute "attaching nothing"               "MOSH_ARGS" "$out"
+running "main|0" "magpie|1"
+out=$(C kill magpei); rc=$?
+check  "a typo names the session meant"  "but there is 'magpie'" "$out"
+check  "and how to kill it"              "dev kill magpie" "$out"
+check_rc "but kills nothing without a terminal" 1 "$rc"
+check  "still running"                   "main magpie " "$(left)"
+keys 'n\n'; out=$(DEV_TTY="$cs/keys" C kill magpei); rc=$?
+check  "on a terminal it asks"           "Kill 'magpie'? [y/N]" "$out"
+check_rc "and no keeps it"               1 "$rc"
+check  "running"                         "main magpie " "$(left)"
+keys 'y\n'; out=$(DEV_TTY="$cs/keys" C kill magpei)
+check  "yes kills it"                    "killed 'magpie'" "$out"
+check  "and only it"                     "main " "$(left)"
+running "main|0" "magpie|1" "maps|0"
+out=$(C kill ma); rc=$?
+check  "a name several could mean lists them" "'ma' could be any of: main magpie maps" "$out"
+check_rc "and kills nothing"             1 "$rc"
+keys '\033[B\033[B\n'; out=$(DEV_TTY="$cs/keys" C kill ma)
+check  "on a terminal they are picked from" "killed 'maps'" "$out"
+check  "and only it"                     "main magpie " "$(left)"
+out=$(C kill nothing); rc=$?
+check  "an unknown name is refused"      "no session 'nothing' on mini" "$out"
+check_rc "exits 1"                       1 "$rc"
+out=$(C kill a b); rc=$?
+check  "one name at most"                "takes one session name" "$out"
+check_rc "exits 1"                       1 "$rc"
+running "main|0" "fresco|1" "magpie|0"
+killpick() { keys "$1"; DEV_TTY="$cs/keys" C kill; }
+out=$(killpick '\033[B\n')
+check  "dev kill picks from the list"    "killed 'fresco'" "$out"
+check  "the hint says enter kills"       "enter kill" "$out"
+check  "and only it"                     "main magpie " "$(left)"
+check  "typing filters"                  "killed 'magpie'" "$(killpick 'mag\n')"
+out=$(killpick '\033'); rc=$?
+check_rc "esc cancels"                   1 "$rc"
+check  "killing nothing"                 "main " "$(left)"
+out=$(C kill); rc=$?
+check  "without a terminal it says why"  "needs a terminal" "$out"
+check_rc "and exits 1"                   1 "$rc"
+running
+check  "with nothing running it says so" "no sessions on mini" "$(killpick '\n')"
+check  "a near-miss of kill is a typo"   "did you mean 'dev kill'" "$(C kil)"
+running "main|0" "fresco|0"
+check  "the connect hint still says attach" "enter attach" "$(pick '\n')"
 rm -rf "$cs"
 
 echo "unreachable"
@@ -743,11 +850,11 @@ err=$(V -v magpie 2>&1 >/dev/null)
 check "connect says the session exists" "'magpie' exists on mini: attaching" "$err"
 check "and the command it runs" '[dev] $ mosh mini -- tmux new -A -s magpie' "$err"
 err=$(cd "$DEV_PROJECTS_DIR/fresco" && V -v 2>&1 >/dev/null)
-check "connect says it starts the project's session in its folder" "starting 'fresco' in $DEV_PROJECTS_DIR/fresco" "$err"
+check "connect says it starts the project's session in its folder" "$DEV_PROJECTS_DIR/fresco is on mini: 'fresco', started there if need be" "$err"
 err=$(V -v my.proj 2>&1 >/dev/null)
 check "connect explains a renamed session" "renamed 'my.proj' to 'my_proj'" "$err"
 err=$(cd "$DEV_PROJECTS_DIR" && V -v 2>&1 >/dev/null)
-check "connect explains the default" "names no session: 'main', the default" "$err"
+check "connect explains the default" "is not in a project: 'main', the default" "$err"
 
 # Tools are logging functions in verbose mode; `have` must not mistake one
 # for an installed program.

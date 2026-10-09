@@ -1,0 +1,19 @@
+# What `dev` leaves out when it copies a project folder to the Mini: output a
+# build or install recreates, and caches. Everything else goes, .git and
+# untracked files like .env included. rsync exclude patterns, one per line: a
+# trailing / matches directories only, and a bare name matches at any depth.
+node_modules/
+.build/
+build/
+dist/
+DerivedData/
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.next/
+.gradle/
+target/
+Pods/
+.DS_Store
