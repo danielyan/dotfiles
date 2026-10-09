@@ -1,5 +1,17 @@
 # Global Instructions
 
+## No implementation without final approval
+
+NEVER jump into implementation without my explicit final approval. While we
+are designing, brainstorming, or iterating on a plan, stay in design mode:
+discuss, propose, write design notes, ask questions. Do not create code,
+schemas, migrations, or project files, and do not provision or change
+external resources (databases, cloud projects, deployments). Phrases like
+"let's implement X" or "let's build X" during a design discussion mean "design
+how we'd implement X", not "start building". Before implementing, summarize
+the plan and ask for a clear go-ahead (e.g. "approved", "go ahead",
+"implement it"). This applies to all projects and sessions.
+
 ## Development
 
 When implementing a feature or fixing a bug in a software project, add tests for
