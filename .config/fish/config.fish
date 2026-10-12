@@ -11,12 +11,21 @@ if status is-interactive
     or set -g tide_left_prompt_items machine $tide_left_prompt_items
 end
 
-# The machine badge: which hosts show it, and how it looks. Outside the
-# interactive block because tide draws the prompt in a background `fish -c`.
-set -g tide_machine_show_on mini
+# The machine badge: which hosts are the server, and how each case looks.
+# Outside the interactive block because tide draws the prompt in a background
+# `fish -c`.
+set -g tide_machine_server_hosts mini
 set -g tide_machine_icon \uf108
-set -g tide_machine_bg_color D75F00
-set -g tide_machine_color EEEEEE
+set -g tide_machine_laptop_icon \uf109
+# The Mini in a tmux/dev session or over ssh/mosh.
+set -g tide_machine_session_bg_color D75F00
+set -g tide_machine_session_color EEEEEE
+# The Mini at its own keyboard, in a plain terminal.
+set -g tide_machine_local_bg_color 008787
+set -g tide_machine_local_color EEEEEE
+# The Air, or any other Mac.
+set -g tide_machine_other_bg_color 444444
+set -g tide_machine_other_color EEEEEE
 
 fish_add_path /opt/homebrew/bin
 

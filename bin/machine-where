@@ -1,0 +1,43 @@
+#!/bin/sh
+# Which Mac this shell is on, and how you are reaching it, for the machine
+# badges in the tide prompt (fish/functions/_tide_item_machine.fish) and the
+# Claude status line (ccstatusline/machine). Prints "<host> <mode>":
+#
+#   mini session   in a tmux/dev session, or reached over ssh or mosh (orange)
+#   mini local     a plain terminal at the Mini's own keyboard        (teal)
+#   air local      the laptop
+#
+# A tmux pane counts as a session even when attached at the Mini's monitor:
+# it is the same long-lived session the Air attaches to. mosh sets no SSH_*
+# variables, so a shell outside tmux is also judged by whether sshd or
+# mosh-server is among its ancestors.
+#
+# For the tests: MACHINE_HOSTNAME overrides the host name, and
+# MACHINE_ANCESTORS (command names, one per line) the ancestor walk.
+
+host=${MACHINE_HOSTNAME:-$(hostname -s 2>/dev/null)}
+host=$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')
+case "$host" in
+    *air*) host=air ;;
+esac
+
+ancestors() {
+    if [ -n "${MACHINE_ANCESTORS+set}" ]; then
+        printf '%s\n' "$MACHINE_ANCESTORS"
+        return
+    fi
+    pid=$PPID
+    while [ "${pid:-1}" -gt 1 ]; do
+        ps -o comm= -p "$pid" 2>/dev/null
+        pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+    done
+}
+
+mode=local
+if [ -n "${TMUX:-}" ] || [ -n "${SSH_CONNECTION:-}" ] || [ -n "${SSH_TTY:-}" ]; then
+    mode=session
+elif ancestors | grep -qE '(^|/)(sshd|sshd-session|mosh-server)$'; then
+    mode=session
+fi
+
+printf '%s %s\n' "$host" "$mode"

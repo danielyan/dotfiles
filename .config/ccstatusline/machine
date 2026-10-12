@@ -3,30 +3,38 @@
 # the same signal as the tide prompt badge, since the prompt is out of sight
 # inside a Claude session.
 #
-#   machine server   prints only on the Mini   (widget with an orange background)
+#   machine server   prints only on the Mini   (label coloured by how you are on it)
 #   machine other    prints only anywhere else (widget with a quiet one)
+
+# On the Mini the label is orange in a tmux/dev session or over ssh/mosh, and
+# teal in a plain terminal at its own keyboard, as decided by ~/bin/machine-where
+# (shared with the tide badge).
 #
 # ccstatusline hides a custom-command widget whose output is empty, so the two
 # widgets side by side show exactly one segment on each machine. Claude pipes
 # the session JSON on stdin; it is not needed here.
 #
-# MACHINE_HOSTNAME overrides the host name, for the tests.
+# MACHINE_HOSTNAME overrides the host name and MACHINE_WHERE the helper, for
+# the tests.
 
-host=${MACHINE_HOSTNAME:-$(hostname -s 2>/dev/null)}
-host=$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')
+where=$("${MACHINE_WHERE:-$HOME/bin/machine-where}" 2>/dev/null)
+host=${where% *} mode=${where##* }
 
 # Nerd Font icons as UTF-8 bytes: /bin/sh and macOS's bash 3.2 have no \u.
 desktop=$(printf '\357\204\210')   # U+F108, as in the tide badge
 laptop=$(printf '\357\204\211')    # U+F109
 
 # The powerline theme picks each segment's colours and ignores a widget's own,
-# so the Mini's label colours itself (the widget preserves colours): orange,
-# the tide badge's colour, on whatever grey the theme gives the segment.
-orange=$(printf '\033[1;38;5;208m') plain=$(printf '\033[22;39m')
+# so the Mini's label colours itself (the widget preserves colours): the tide
+# badge's orange or teal, on whatever grey the theme gives the segment.
+orange=$(printf '\033[1;38;5;208m') teal=$(printf '\033[1;38;5;37m')
+plain=$(printf '\033[22;39m')
+colour=$orange
+[ "$mode" = local ] && colour=$teal
 
 case "$host" in
-    mini)  kind=server label="$orange$desktop mini$plain" ;;
-    *air*) kind=other  label="$laptop air" ;;
+    mini)  kind=server label="$colour$desktop mini$plain" ;;
+    air)   kind=other  label="$laptop air" ;;
     *)     kind=other  label="$laptop $host" ;;
 esac
 
