@@ -457,6 +457,40 @@ check  "it runs after the Brewfile, in server mode only" "yes" \
     "$([ -n "$call_line" ] && [ "$call_line" -gt "$bundle_line" ] \
         && sed -n "${call_line}p" "$BOOTSTRAP" | grep -q 'SERVER_MODE' && echo yes || echo no)"
 
+# install_rust_toolchain: $1 = "installed" or "missing", $2 = 0 if a toolchain
+# is already installed, $3 = exit of installing one
+rust_case() {
+    local tmp; tmp=$(mktemp -d)
+    [ "$1" = installed ] && printf '#!/usr/bin/env bash\necho "rustup $*" >> "%s/calls"\n[ "$*" = "toolchain list" ] && { [ %s = 0 ] && echo stable-aarch64-apple-darwin || echo no installed toolchains; exit 0; }\nexit %s\n' "$tmp" "$2" "$3" > "$tmp/rustup" && chmod +x "$tmp/rustup"
+    bash -c '
+        echo_ok()   { echo "[ok] $1"; }
+        echo_err()  { echo "[err] $1"; }
+        TODOS=(); todo() { TODOS+=("$1"); echo_err "$1"; }
+        '"$(awk '/^install_rust_toolchain\(\)/,/^\}/' "$BOOTSTRAP")"'
+        install_rust_toolchain "'"$tmp/rustup"'"
+        printf "TODOCOUNT:%d\n" "${#TODOS[@]}"
+    ' 2>&1
+    [ -f "$tmp/calls" ] && cat "$tmp/calls"
+    rm -rf "$tmp"
+}
+
+echo "rust toolchain"
+out=$(rust_case installed 1 0)
+check  "installs stable when none is set" "rustup default stable"            "$out"
+check  "with clippy and rustfmt"          "rustup component add clippy rustfmt" "$out"
+check  "and says so"                      "Installed the stable Rust toolchain" "$out"
+out=$(rust_case installed 0 0)
+refute "leaves a chosen toolchain alone"  "rustup default stable"            "$out"
+check  "and says it is there"             "already installed"                "$out"
+out=$(rust_case installed 1 1)
+check  "a failed install is a todo"       "Run: rustup default stable"       "$out"
+out=$(rust_case missing 0 0)
+check  "no rustup is a todo"              "rustup is not installed"          "$out"
+call_line=$(grep -n -m1 '^install_rust_toolchain$' "$BOOTSTRAP" | cut -d: -f1)
+bundle_line=$(grep -n -m1 '^brew bundle' "$BOOTSTRAP" | cut -d: -f1)
+check  "it runs after the Brewfile"       "yes" \
+    "$([ -n "$call_line" ] && [ "$call_line" -gt "$bundle_line" ] && echo yes || echo no)"
+
 echo "Brewfile: the formula on the server, the app elsewhere"
 if command -v brew >/dev/null; then
     bf_yadm=$(mktemp -d)

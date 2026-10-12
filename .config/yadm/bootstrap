@@ -221,6 +221,26 @@ start_tailscale_service() {
         || todo "On the Mini: System Settings → General → Sharing → Remote Login on, ⓘ → Allow full disk access for remote users; add each client's public key to ~/.ssh/authorized_keys"
 }
 
+# rustup from the Brewfile ships no toolchain, so cargo is missing until one
+# is installed. Only when none is: a re-run must not reset a choice made by
+# hand. `rustup default` is no test of that, since it reports stable as the
+# default before stable exists. $1 = rustup, for tests; Homebrew's is keg-only
+# and so not on PATH.
+install_rust_toolchain() {
+    local rustup="${1:-/opt/homebrew/opt/rustup/bin/rustup}"
+    if [ ! -x "$rustup" ]; then
+        todo "rustup is not installed. Run: brew bundle --file=~/Brewfile"
+        return
+    fi
+    if ! "$rustup" toolchain list 2>/dev/null | grep -q 'no installed toolchains'; then
+        echo_ok "Rust toolchain already installed"
+    elif "$rustup" default stable && "$rustup" component add clippy rustfmt; then
+        echo_ok "Installed the stable Rust toolchain"
+    else
+        todo "Install a Rust toolchain. Run: rustup default stable"
+    fi
+}
+
 echo_ok "Bootstrap starting..."
 
 [ "$SERVER_MODE" -eq 1 ] && configure_server
@@ -250,6 +270,7 @@ echo_ok "Installing apps from Brewfile..."
 brew bundle --file="$HOME/Brewfile" \
     || todo "Some Brewfile entries did not install. Retry with: brew bundle --file=~/Brewfile"
 [ "$SERVER_MODE" -eq 1 ] && start_tailscale_service
+install_rust_toolchain
 
 ## Touch ID for sudo ########################################
 enable_touchid_sudo

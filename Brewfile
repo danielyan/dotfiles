@@ -8,6 +8,7 @@ brew "node"
 brew "ffmpeg"
 brew "poppler"
 brew "uv"
+brew "rustup"         # keg-only; on PATH via .config/fish/conf.d/rustup.fish
 brew "xcodegen"
 brew "platformio"
 brew "mas"
