@@ -205,6 +205,7 @@ works over ssh, in any shell, and on a machine that hasn't been configured yet.
 | `dev connect` | Pick a running session from a list: type to filter (letters in order match too: `mgp` → `magpie`), ↑↓ to move, enter to attach, esc to cancel |
 | `dev ls` | List sessions without attaching |
 | `dev kill [name]` | End a session and everything running in it. With a name, that session; a typo or partial name is only killed after you confirm the session it means. Alone, the same picker as `dev connect`, enter kills |
+| `dev kill-all [--yes]` | End every session. Names them and asks once (`Kill all 3? [y/N]`); without a terminal it kills nothing unless given `--yes`. Run from inside a session on the Mini, that session goes last. Sessions end one by one, so `dev run tmux kill-server` is still the way to restart tmux itself |
 | `dev run <cmd>` | Run one command remotely and come straight back |
 | `dev shell` | A plain login shell, no tmux |
 | `dev status` | Fast health summary; non-zero exit if anything is wrong |

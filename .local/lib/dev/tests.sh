@@ -83,6 +83,8 @@ if [ "\${*: -1}" = "bash -ls" ]; then
         *"kill-session -t ="*)
             name=\${stdin##*kill-session -t =}; name=\${name%%;*}
             cut -d'|' -f1 "$cs/running" | grep -qx -- "\$name" || exit 0
+            # Sessions listed in \$cs/stuck will not die.
+            grep -qx -- "\$name" "$cs/stuck" 2>/dev/null && exit 0
             grep -v "^\$name\(|\|\$\)" "$cs/running" > "$cs/running.new"
             mv "$cs/running.new" "$cs/running"; echo __dev_ok ;;
         *"test -d "*)
@@ -366,6 +368,53 @@ check_rc "and exits 1"                   1 "$rc"
 running
 check  "with nothing running it says so" "no sessions on mini" "$(killpick '\n')"
 check  "a near-miss of kill is a typo"   "did you mean 'dev kill'" "$(C kil)"
+
+echo "kill-all"
+running "main|0" "magpie|1" "fresco|0"
+out=$(C kill-all); rc=$?
+check  "it names every session"          "3 sessions on mini: main, magpie, fresco" "$out"
+check  "without a terminal kills nothing" "nothing killed: confirming needs a terminal" "$out"
+check  "and says how to anyway"          "dev kill-all --yes" "$out"
+check_rc "exits 1"                       1 "$rc"
+check  "all still running"               "main magpie fresco " "$(left)"
+keys 'n\n'; out=$(DEV_TTY="$cs/keys" C kill-all); rc=$?
+check  "on a terminal it asks once"      "Kill all 3? [y/N]" "$out"
+check_rc "and no keeps them"             1 "$rc"
+check  "all of them"                     "main magpie fresco " "$(left)"
+keys '\n'; out=$(DEV_TTY="$cs/keys" C kill-all); rc=$?
+check_rc "enter alone is no"             1 "$rc"
+keys 'y\n'; out=$(DEV_TTY="$cs/keys" C kill-all); rc=$?
+check  "yes kills the first"             "killed 'main'" "$out"
+check  "and the last"                    "killed 'fresco'" "$out"
+check_rc "exits 0"                       0 "$rc"
+check  "nothing left"                    "<>" "<$(left)>"
+running "main|0" "magpie|0"
+out=$(C kill-all --yes); rc=$?
+check  "--yes needs no terminal"         "killed 'magpie'" "$out"
+refute "and asks nothing"                "[y/N]" "$out"
+check_rc "exits 0"                       0 "$rc"
+check  "nothing left"                    "<>" "<$(left)>"
+running "main|0"
+check  "nor does -y"                     "killed 'main'" "$(C kill-all -y)"
+running "solo|0"
+keys 'n\n'; out=$(DEV_TTY="$cs/keys" C kill-all)
+check  "one session is named as one"     "1 session on mini: solo" "$out"
+check  "and asked about as it"           "Kill it? [y/N]" "$out"
+running "main|0" "magpie|0" "fresco|0"; printf 'magpie\n' > "$cs/stuck"
+out=$(C kill-all --yes); rc=$?
+check  "a session that will not die"     "could not kill: magpie" "$out"
+check  "does not spare the rest"         "killed 'fresco'" "$out"
+check_rc "but exits 1"                   1 "$rc"
+check  "leaving only it"                 "magpie " "$(left)"
+rm -f "$cs/stuck"
+running
+out=$(C kill-all); rc=$?
+check  "with nothing running it says so" "no sessions on mini" "$out"
+check_rc "and exits 0"                   0 "$rc"
+out=$(C kill-all now); rc=$?
+check  "it takes only --yes"             "takes only --yes" "$out"
+check_rc "exits 1"                       1 "$rc"
+check  "a near-miss of kill-all is a typo" "did you mean 'dev kill-all'" "$(C kill-al)"
 running "main|0" "fresco|0"
 check  "the connect hint still says attach" "enter attach" "$(pick '\n')"
 rm -rf "$cs"
@@ -803,6 +852,30 @@ pm ' displaysleep         0\n sleep                1 (sleep prevented by powerd)
 out=$(PATH="$ps_dir:$PATH" "$DEV" run echo elsewhere 2>&1)
 check "sleep 1 is not the server, even with displaysleep 0" "SSH_ARGS" "$out"
 rm -rf "$ps_dir"
+
+echo "kill-all on the Mini"
+# Run inside a session on the Mini, that session must go last: killing it
+# first would kill this command before the others.
+sv=$(mktemp -d)
+printf '#!/usr/bin/env bash\nprintf " displaysleep         10\\n sleep                0\\n"\n' > "$sv/pmset"
+cat > "$sv/tmux" <<STUB
+#!/usr/bin/env bash
+case "\$1" in
+    ls) printf 'main|0\nmagpie|1\nfresco|0\n' ;;
+    display-message) echo magpie ;;
+    kill-session) printf '%s ' "\${3#=}" >> "$sv/order" ;;
+esac
+STUB
+chmod +x "$sv/pmset" "$sv/tmux"
+S() { : > "$sv/order"; PATH="$sv:$PATH" "$DEV" "$@" 2>&1; }
+out=$(TMUX=/tmp/tmux-501/default,1,0 S kill-all --yes)
+check  "this session goes last"          "main fresco magpie " "$(cat "$sv/order")"
+out=$(TMUX=/tmp/tmux-501/default,1,0 S kill-all); rc=$?
+check  "and the list says so"            "(this session, 'magpie', goes last)" "$out"
+check  "naming it last"                  "main, fresco, magpie" "$out"
+out=$(env -u TMUX PATH="$sv:$PATH" "$DEV" kill-all --yes 2>&1; :)
+check  "outside tmux the order stands"   "main magpie fresco " "$(cat "$sv/order")"
+rm -rf "$sv"
 
 echo "verbose"
 vb=$(mktemp -d)

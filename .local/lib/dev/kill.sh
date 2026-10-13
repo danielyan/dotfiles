@@ -12,17 +12,22 @@
 # shellcheck source=/dev/null
 . "$DEV_LIB/connect.sh"
 
-# End <session>. Told by what the Mini prints, like every remote check: its
-# exit status says nothing.
-_kill() { # <session>
+# End <session>, reporting it; fails quietly, for the caller to report. Told
+# by what the Mini prints, like every remote check: its exit status says
+# nothing.
+_end_session() { # <session>
     local target="=$1"
     debug "killing '$1' on $DEV_HOST"
     if is_server; then
         tmux kill-session -t "$target" 2>/dev/null
     else
         remote_ok "tmux kill-session -t $(printf '%q' "$target")"
-    fi || die "could not kill '$1' on $DEV_HOST (dev ls shows what is running)"
+    fi || return 1
     printf "%skilled '%s'%s\n" "$C_OK" "$1" "$C_OFF"
+}
+
+_kill() { # <session>
+    _end_session "$1" || die "could not kill '$1' on $DEV_HOST (dev ls shows what is running)"
 }
 
 dev_kill() {

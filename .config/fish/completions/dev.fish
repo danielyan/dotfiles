@@ -1,10 +1,12 @@
 # Completions only — the implementation is bash at ~/bin/dev.
 
-set -l cmds connect doctor preflight land pair ls run shell status repos help
+set -l cmds connect doctor preflight land pair ls kill kill-all run shell status repos help
 
 complete -c dev -f
 complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a connect   -d "pick a session from a list"
 complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a ls        -d "list sessions without attaching"
+complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a kill      -d "end a session"
+complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a kill-all  -d "end every session, after asking"
 complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a run       -d "run one command remotely"
 complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a shell     -d "plain login shell, no tmux"
 complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a status    -d "quick health summary"
@@ -31,6 +33,10 @@ end
 # `dev <name>` attaches to a session, so names complete where commands do.
 complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a "(__dev_sessions)" -d session
 complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a "(__dev_projects)" -d project
+
+# dev kill <session>, dev kill-all --yes
+complete -c dev -n "__fish_seen_subcommand_from kill; and test (count (commandline -opc)) -eq 2" -a "(__dev_sessions)" -d session
+complete -c dev -n "__fish_seen_subcommand_from kill-all" -l yes -s y -d "skip the confirmation"
 
 # dev repos <sub>
 set -l repos_subs list add remove sync status help

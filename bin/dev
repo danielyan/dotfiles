@@ -111,7 +111,7 @@ _trace() {
 export -f ok no maybe section die have is_server reachable require_reachable remote_bash remote_ok session_name debug
 
 # --- dispatch -------------------------------------------------------------
-COMMANDS="connect doctor preflight land pair ls kill run shell status repos"
+COMMANDS="connect doctor preflight land pair ls kill kill-all run shell status repos"
 
 usage() {
     cat <<USAGE
@@ -125,6 +125,7 @@ ${C_BOLD}dev${C_OFF} — control the always-on Mac Mini
   ${C_BOLD}dev connect${C_OFF}             pick a running session: type to filter, ↑↓, enter
   ${C_BOLD}dev ls${C_OFF}                  list sessions without attaching
   ${C_BOLD}dev kill${C_OFF} [name]         kill <name>, or pick a running session to kill
+  ${C_BOLD}dev kill-all${C_OFF} [--yes]    kill every session, after one confirmation
   ${C_BOLD}dev run${C_OFF} <command>       run one command remotely, no session
   ${C_BOLD}dev shell${C_OFF}               a plain login shell, no tmux
   ${C_BOLD}dev status${C_OFF}              quick health summary
