@@ -27,6 +27,11 @@ set -g tide_machine_local_color EEEEEE
 set -g tide_machine_other_bg_color 444444
 set -g tide_machine_other_color EEEEEE
 
+# tide prints one space after the home icon, but the glyph is wider than a
+# cell and swallows it; pad it with a second. A global, so tide configure
+# (which rewrites the universal) cannot undo it.
+set -g tide_pwd_icon_home \uf015' '
+
 fish_add_path /opt/homebrew/bin
 
 fish_config theme choose ayu\ Dark

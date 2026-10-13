@@ -19,5 +19,5 @@ function _tide_item_machine
         set style machine_$where[2]
         set icon $tide_machine_icon
     end
-    _tide_print_item $style $icon' ' $host
+    _tide_print_item $style $icon'  ' $host
 end
