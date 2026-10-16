@@ -52,6 +52,8 @@ cask "discord"
 cask "claude"
 cask "synology-drive"
 cask "bambu-studio"
+cask "elgato-stream-deck"
+cask "handy"
 cask "claude-code"
 # Mesh network + Tailscale SSH. The Mini (yadm class "server") takes the
 # formula: its tailscaled is a system service, up before anyone logs in, so
