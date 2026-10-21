@@ -13,6 +13,7 @@ brew "xcodegen"
 brew "platformio"
 brew "mas"
 brew "utiluti"         # default apps for file types; see bin/mac-default-apps
+brew "lua"             # runs ~/.hammerspoon/tests
 
 # --- machine continuity: see vault projects/project-machine-continuity.md ---
 brew "tmux"          # persistent sessions on the Mini (the continuity mechanism)
@@ -67,6 +68,11 @@ if `"#{yadm}" config --get-all local.class 2>/dev/null`.split.include?("server")
   brew "tailscale"
 else
   cask "tailscale-app"
+  # Local/remote desktop toggle to the Mini (~/.hammerspoon/remote_desktop.lua).
+  # By hand: grant Hammerspoon Accessibility, and in Options+ set the MX Master
+  # gesture button to the keystroke ctrl-opt-shift-cmd-S.
+  cask "hammerspoon"
+  cask "logi-options+"
 end
 cask "danielyan/tap/fresco"  # own app; updates itself via Sparkle
 
