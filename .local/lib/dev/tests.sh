@@ -93,6 +93,10 @@ if [ "\${*: -1}" = "bash -ls" ]; then
             grep -qx -- "\$dir" "$cs/missing" 2>/dev/null || eval "\$stdin" ;;
         *"mkdir -p "*) echo __dev_ok ;;
         *"new-window"*) printf '%s\n' "\$stdin" >> "$cs/log"; echo __dev_ok ;;
+        # dev hub's build check. \$cs/hub-broken makes the build fail.
+        *"building dev-hub"*)
+            [ -f "$cs/hub-broken" ] && { echo "error: could not compile" >&2; exit 0; }
+            echo __dev_ok ;;
     esac
     exit 0
 fi
@@ -131,6 +135,21 @@ check  "a project with no session starts it in the project" \
 out=$(cd "$DEV_PROJECTS_DIR/my.proj" && C)
 check  "a cleaned name still starts in its folder" \
        "tmux new -A -s my_proj -c $DEV_PROJECTS_DIR/my.proj" "$out"
+
+echo "hub"
+out=$(C hub)
+check "hub attaches to a tmux server of its own" \
+      "MOSH_ARGS: mini -- tmux -L hub -f $HOME/.config/dev/hub.tmux.conf new -A -s hub -n hub $HOME/.local/bin/dev-hub" "$out"
+touch "$cs/hub-broken"
+out=$(C hub); rc=$?
+check  "a sidebar that will not build stops it" "dev-hub could not be built on mini" "$out"
+refute "before anything is attached" "MOSH_ARGS" "$out"
+check_rc "and exits 1" 1 "$rc"
+rm "$cs/hub-broken"
+out=$(C hub magpie); rc=$?
+check  "hub takes no session name" "dev hub takes nothing" "$out"
+check_rc "and exits 1" 1 "$rc"
+check "help lists it" "dev hub" "$("$DEV" help 2>&1)"
 
 echo "connect: a project the Mini lacks"
 ply="$DEV_PROJECTS_DIR/ply"

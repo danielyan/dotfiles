@@ -1,0 +1,17 @@
+[package]
+name = "dev-hub"
+version = "0.1.0"
+edition = "2024"
+description = "The sidebar of `dev hub`: the Mini's tmux sessions listed down the left like browser tabs."
+publish = false
+
+[dependencies]
+anyhow = "1.0.104"
+ratatui = "0.30.2"
+serde = { version = "1.0.229", features = ["derive"] }
+toml = "1.1.4"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

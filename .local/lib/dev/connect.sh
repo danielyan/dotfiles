@@ -76,6 +76,13 @@ _attach() { # <session> [dir] [command...]
     local tmux_cmd=(tmux new -A -s "$1")
     [ -n "${2:-}" ] && tmux_cmd+=(-c "$2")
     [ $# -gt 2 ] && tmux_cmd+=("${@:3}")
+    _run_tmux "${tmux_cmd[@]}"
+}
+
+# Run <tmux command...> on the Mini, in this terminal: right here on the
+# Mini, else over mosh, or ssh without it. Never returns. dev hub uses it too.
+_run_tmux() { # <tmux command...>
+    local tmux_cmd=("$@")
 
     if is_server; then
         # Already on the Mini: attaching over ssh to ourselves would be absurd.

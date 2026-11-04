@@ -111,7 +111,7 @@ _trace() {
 export -f ok no maybe section die have is_server reachable require_reachable remote_bash remote_ok session_name debug
 
 # --- dispatch -------------------------------------------------------------
-COMMANDS="connect doctor preflight land pair ls kill kill-all run shell status repos"
+COMMANDS="connect hub doctor preflight land pair ls kill kill-all run shell status repos"
 
 usage() {
     cat <<USAGE
@@ -123,6 +123,8 @@ ${C_BOLD}dev${C_OFF} — control the always-on Mac Mini
   ${C_BOLD}dev${C_OFF} <name>              attach to <name>, typos and partial names too (magpei, mag);
                           offers to start a missing one. main just starts
   ${C_BOLD}dev connect${C_OFF}             pick a running session: type to filter, ↑↓, enter
+  ${C_BOLD}dev hub${C_OFF}                 every session in one screen, listed down the left like
+                          browser tabs: click or ⌥1-9 to switch, n new, x kill
   ${C_BOLD}dev ls${C_OFF}                  list sessions without attaching
   ${C_BOLD}dev kill${C_OFF} [name]         kill <name>, or pick a running session to kill
   ${C_BOLD}dev kill-all${C_OFF} [--yes]    kill every session, after one confirmation

@@ -203,6 +203,7 @@ works over ssh, in any shell, and on a machine that hasn't been configured yet.
 | `dev` | In `~/projects/<p>` or below, the `<p>` session, started in `~/projects/<p>` if need be. If the Mini has no such folder, `dev` says so before connecting, with the number of files and size a copy would send, and asks: `c` copies the folder there (skipping what `~/.local/lib/dev/.devignore` lists) and connects in it, `h` connects in home without copying, `q` cancels. A session already running in home gets a new window in the copied folder. Anywhere else, `main`, started if need be |
 | `dev <name>` | Attach to the `<name>` session (from inside `~/projects/<name>`, the same as `dev`). Typos and partial names find the running session meant (`magpei`, `mag` → `magpie`); a name several could mean opens the picker with just those. A missing one is not started silently: `dev` says so and offers to, matching project folders the same way (`fresko` → `fresco`, started in its folder). `main` always just starts |
 | `dev connect` | Pick a running session from a list: type to filter (letters in order match too: `mgp` → `magpie`), ↑↓ to move, enter to attach, esc to cancel |
+| `dev hub` | Every session in one screen: listed down the left like browser tabs, the one picked live on the right. See [dev hub](#dev-hub) |
 | `dev ls` | List sessions without attaching |
 | `dev kill [name]` | End a session and everything running in it. With a name, that session; a typo or partial name is only killed after you confirm the session it means. Alone, the same picker as `dev connect`, enter kills |
 | `dev kill-all [--yes]` | End every session. Names them and asks once (`Kill all 3? [y/N]`); without a terminal it kills nothing unless given `--yes`. Run from inside a session on the Mini, that session goes last. Sessions end one by one, so `dev run tmux kill-server` is still the way to restart tmux itself |
@@ -237,6 +238,55 @@ Two behaviours worth knowing:
   a target as separators.
 
 `$DEV_HOST` overrides the target host, `$DEV_SESSION` the default session.
+
+### dev hub
+
+```
+┌ sessions ──────────────────┐
+│ 1 main                     │  the picked session, live: Claude Code,
+│   ~/projects/gitview · 2h  │  shell, whatever runs there. Typed into
+│▌2 magpie                 ⋯ │  exactly as after `dev magpie`, C-a and all
+│   ~/projects/magpie · now  │
+│ 3 pasty                  ● │
+│   ~/projects/pasty · 4d    │
+│ + new                      │
+└────────────────────────────┘
+```
+
+Rows are sessions in the order they started, with where their active pane is
+and how long since anything happened there. The mark on the right is Claude
+Code's state, read from the titles its status-glyph hooks set: `⋯` working,
+`●` waiting for you, `✔` done.
+
+| Key | Does |
+|---|---|
+| click, or ↑↓ and enter | Show that session and type into it |
+| ⌥1–⌥9 | Jump to session 1–9, from anywhere in the hub |
+| ⌥{ ⌥} | Back and forward through the sessions visited, as in a browser |
+| ⌥0 | Keyboard to the list; esc hands it back to the session |
+| `n` | Name a session to open or start: it runs `dev <name>`, so typos, folders and the "start it?" question work as they do there |
+| `x` | Kill the session under the cursor, after a `y` |
+| `q` | Detach, leaving the hub as it is for next time; `Q` ends it (sessions stay) |
+
+How it works: the hub is a tmux server of its own (`tmux -L hub`, configured by
+`~/.config/dev/hub.tmux.conf`, prefix off so `C-a` reaches the session). Its
+left pane runs `dev-hub`, a Rust sidebar in the style of gitview whose source
+is `~/.local/src/dev-hub`; the right is a nested `tmux attach` to the real
+session. Each session opened keeps its pane in a hidden window, and switching
+swaps it in, so nothing reattaches. Sessions stay on the default server:
+`dev <name>` reaches them as ever, and ending the hub ends none of them.
+
+Only the Mini runs `dev-hub`, so only the Mini builds it: `dev hub` runs cargo
+there the first time, and again whenever the source is newer than
+`~/.local/bin/dev-hub`. Build output goes to `~/.cache/dev-hub`. Its theme
+follows gitview's (`[ui] theme` in `~/.config/gitview/config.toml`) unless
+`~/.config/dev/hub.toml` sets `theme`; `width` there sets the sidebar's width.
+Tests: `cargo test` in the source folder (the integration tests start
+throwaway tmux servers of their own).
+
+macOS terminals type symbols with Option rather than sending Alt, so the ⌥
+shortcuts need either `macos-option-as-alt` in Ghostty or keybinds that send
+`ESC 1` and so on; clicking works either way.
 
 ### dev doctor
 

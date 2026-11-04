@@ -1,9 +1,10 @@
 # Completions only — the implementation is bash at ~/bin/dev.
 
-set -l cmds connect doctor preflight land pair ls kill kill-all run shell status repos help
+set -l cmds connect hub doctor preflight land pair ls kill kill-all run shell status repos help
 
 complete -c dev -f
 complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a connect   -d "pick a session from a list"
+complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a hub       -d "every session in one screen, like tabs"
 complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a ls        -d "list sessions without attaching"
 complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a kill      -d "end a session"
 complete -c dev -n "not __fish_seen_subcommand_from $cmds" -a kill-all  -d "end every session, after asking"

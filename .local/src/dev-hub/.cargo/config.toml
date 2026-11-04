@@ -1,0 +1,5 @@
+# Build output stays out of the dotfiles tree: yadm tracks ~ itself, and a
+# target/ in here would be gigabytes of noise beside the source. Relative to
+# ~/.local/src/dev-hub, so this is ~/.cache/dev-hub.
+[build]
+target-dir = "../../../.cache/dev-hub"
