@@ -6,3 +6,4 @@
 projects/.env
 .config/fresco/credentials.json
 .config/dev/repos
+.config/flib/config.toml

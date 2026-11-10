@@ -468,6 +468,20 @@ if [ -x "$HOME/bin/dev" ] && [ -f "$HOME/.config/dev/repos" ]; then
     esac
 fi
 
+## flib (books from flibusta; the /book skill) ##############
+# The skill symlink (~/.claude/skills/book) is in yadm; the CLI comes from the
+# clone. The Gmail app password for Send to Kindle is per-Mac, in the Keychain.
+if [ -d "$HOME/projects/flib" ] && command_exists uv; then
+    if ! command_exists flib; then
+        echo_ok "Installing flib from ~/projects/flib..."
+        uv tool install --editable "$HOME/projects/flib" \
+            || todo "flib did not install. Retry with: uv tool install --editable ~/projects/flib"
+    fi
+    if ! security find-generic-password -s flib-smtp >/dev/null 2>&1; then
+        todo "flib Send to Kindle needs the Gmail app password: security add-generic-password -s flib-smtp -a <gmail address> -w"
+    fi
+fi
+
 ## Syncthing ###############################################
 if command_exists syncthing; then
     if ! brew services list | grep -q '^syncthing.*started'; then
